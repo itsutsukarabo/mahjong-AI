@@ -1,0 +1,23 @@
+- var page = 'autoplay'
+
+doctype html
+html(lang="ja")
+  
+  head
+    include ../inc/meta
+
+    include ../inc/ogp
+    +ogp('電脳麻将: 自動対戦', 'AIプレーヤーの無限麻雀地獄', 
+          'https://kobalab.net/majiang/img/game.png')
+
+    include ../inc/style
+    include ../inc/script
+  
+  body.title
+    include ../inc/loaderr
+    include ../inc/navi
+    include ../inc/title
+    include ../inc/loaddata
+
+    include ../inc/board
+    .version ver. #{version}

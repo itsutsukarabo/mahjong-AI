@@ -1,0 +1,73 @@
+body.title
+    color:      white
+    background: black
+    margin: 0
+    #title
+        display: block
+    #navi
+        width: 800px
+        margin: 0 auto
+    > .version
+        display: none
+
+#title
+    display: none
+    margin: 40px auto
+    width: 640px
+    padding: 4px
+    border-radius: 5px
+    background: white
+    color:      black
+    text-align: center
+    font-family: text-font
+    h1
+        margin: 0px
+        height: 150px
+        img
+            width: 600px
+    .version
+        font-family: defen-font
+        font-size: 24px
+    .loading
+        margin: 8px auto
+        color: #666
+        font-family: menu-font
+        font-size: 16px
+        animation: blink-text 2s infinite
+    .start
+        margin: 8px auto
+        font-family: text-font
+        width: 120px
+        padding: 4px
+        border-radius: 4px
+        font-size: 16px
+        color: white
+        background: blue
+        cursor: pointer
+        &:hover
+        &:focus
+            background: #ccc
+            outline: none
+    .login
+        margin: 8px auto
+        form
+            margin: 0.5em
+        input[type="submit"]
+            cursor: pointer
+        form.local
+            input[name="name"]
+                width: 8em
+            input[type="submit"]
+                border: none
+                color: white
+                background: blue
+        img
+            width: 1.2em
+            vertical-align: middle
+        form:not(.local)
+            input[type="submit"]
+                width: 120px
+                border: none
+                background: none
+                text-align: left
+                padding: 0
