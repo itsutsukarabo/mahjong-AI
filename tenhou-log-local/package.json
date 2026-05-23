@@ -1,0 +1,11 @@
+{
+  "name": "tenhou-log-local",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "mocha -u tdd"
+  },
+  "devDependencies": {
+    "mocha": "^11.0.0"
+  }
+}
