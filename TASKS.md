@@ -185,7 +185,7 @@ jobs:
 
 ### TICKET-015: majiang-ui の paipu.js kita パッチを patch-package で管理する
 
-**状態**: 未着手  
+**状態**: 完了  
 **優先度**: 高  
 **依存**: TICKET-014
 
@@ -219,7 +219,7 @@ jobs:
 
 ### TICKET-016: paipu.js proxy URL 変更・ビルド・動作確認
 
-**状態**: 未着手  
+**状態**: 完了  
 **優先度**: 高  
 **依存**: TICKET-013, TICKET-015
 
@@ -241,6 +241,86 @@ jobs:
 4. `npx http-server dist -p 8080 --cors` でアプリを起動する
 5. 牌譜ビューアに `https://tenhou.net/0/?log=2025080617gm-00b9-0000-104adf08&tw=2` を入力して再生できることを確認する
 6. 北抜きが発生する場面で手牌から z4 が消えることを目視で確認する
+
+---
+
+### TICKET-017: 対局中に北抜き枚数を表示する
+
+**状態**: 完了  
+**優先度**: 高  
+**依存**: TICKET-015
+
+**概要**  
+三麻対局の再生中、プレイヤーが北を何枚抜いたかを手牌エリアに表示する。現状は `board.kita()` が `shoupai.dapai()` で z4 を手牌から除去するだけで、抜いた z4 の視覚的な記録が残らない。
+
+**根本原因**  
+- `majiang-ui/lib/board.js` の `update()` に `data.kita` ハンドラが存在しない
+- `majiang-ui/lib/shoupai.js` に北抜き枚数を保持・描画する仕組みがない
+
+**実装方針**  
+patch-package で `@kobalab/majiang-ui` の 2 ファイルを修正する。
+
+1. **`shoupai.js`** に以下を追加する
+   - コンストラクタに `this._n_kita = 0`
+   - `kita()` メソッド（`_n_kita` をインクリメントし、fulou エリアに z4 タイルを 1 枚追加）
+   - `redraw()` 内の fulou ループの直後に、`_n_kita` 枚分の z4 タイルを描画（再描画しても消えないようにする）
+   ```javascript
+   kita() {
+       this._n_kita++;
+       this._node.fulou.append($('<span class="mianzi kita">').append(this._pai('z4')));
+       return this.adjust();
+   }
+   // redraw() 内 fulou ループの直後:
+   for (let i = 0; i < this._n_kita; i++) {
+       this._node.fulou.append($('<span class="mianzi kita">').append(this._pai('z4')));
+   }
+   ```
+
+2. **`board.js`** の `update()` に `data.kita` ハンドラを追加する（kaigang の直後）
+   ```javascript
+   else if (data.kita) {
+       this._view.shoupai[data.kita.l].kita();
+   }
+   ```
+
+3. **動作確認**: `npm run build:js` → 三麻牌譜を再生し、北抜きのたびに手牌エリアに z4 タイルが 1 枚ずつ追加されることを目視確認。局が変わったら 0 枚にリセットされること。
+
+---
+
+### TICKET-018: アガリ画面での北抜きの表示を修正する（暗槓→北として表示）
+
+**状態**: 完了  
+**優先度**: 高  
+**依存**: TICKET-017（shoupai.js の kita() メソッドが必要）
+
+**概要**  
+アガリ確認画面で、抜いた北の枚数分だけ「暗槓（z4 4 枚）」が表示されるバグを修正する。北抜き 3 回なら北の z4 タイルが 3 枚並ぶ表示に変える。
+
+**根本原因**  
+`convlog.js` の `hule()` が AGARI タグの北抜き副露値を `mianzi(mc)` で `z4444` に変換し、shoupai 文字列に含める。`Majiang.Shoupai.fromString()` はこれを `_fulou` に格納し、`mianzi.js` が `/^[mpsz](\d)\1\1\1$/` にマッチして暗槓として描画する。
+
+**実装方針**  
+patch-package で `@kobalab/majiang-ui` の `dialog.js` を修正する（`convlog.js` 側は変更不要）。
+
+1. **`dialog.js`** の `hule()` メソッド内で、shoupai 文字列から `z4444` を取り除いてから `Shoupai` を生成し、その後 kita 枚数分 `shoupai_view.kita()` を呼ぶ
+   ```javascript
+   // 変更前
+   new Shoupai($('.shoupai', this._node.hule), this._pai,
+               Majiang.Shoupai.fromString(hule.shoupai)).redraw(true);
+
+   // 変更後
+   let sp_str   = hule.shoupai;
+   let n_kita   = (sp_str.match(/,z4{4}/g) || []).length;
+   sp_str       = sp_str.replace(/,z4{4}/g, '');
+   let sp_view  = new Shoupai($('.shoupai', this._node.hule), this._pai,
+                               Majiang.Shoupai.fromString(sp_str));
+   sp_view.redraw(true);
+   for (let i = 0; i < n_kita; i++) sp_view.kita();
+   ```
+
+2. **四麻への影響**: 四麻では z4 の暗槓が理論上存在するが、天鳳ログにほぼ現れない。またこのロジックは sanma 判定を行わず `z4444` を一律に北として扱う。今後問題になれば `hule.n_kita` を `convlog.js` 側で付与する方式に切り替える。
+
+3. **動作確認**: `npm run build:js` → 三麻アガリ画面で北が暗槓ではなく z4 タイル（1 枚ずつ）として表示されること。
 
 ---
 
