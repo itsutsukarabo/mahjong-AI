@@ -1256,7 +1256,7 @@
       {
         "hule": {
           "l": 0,
-          "shoupai": "p4056688s067p4,z4444,z4444,p9999",
+          "shoupai": "p4056688s067p4,p9999",
           "baojia": 3,
           "fubaopai": [
             "s1",
@@ -1295,6 +1295,7 @@
             0,
             -24000
           ],
+          "n_kita": 2,
           "fu": 70,
           "fanshu": 10
         }
@@ -1967,7 +1968,7 @@
       {
         "hule": {
           "l": 1,
-          "shoupai": "p123789s78z22s9,z4444,z777-",
+          "shoupai": "p123789s78z22s9,z777-",
           "baojia": 0,
           "fubaopai": null,
           "defen": 8000,
@@ -1991,6 +1992,7 @@
             0,
             0
           ],
+          "n_kita": 1,
           "fu": 30,
           "fanshu": 5
         }
@@ -2237,7 +2239,7 @@
       {
         "hule": {
           "l": 0,
-          "shoupai": "p777s1234407s6,z4444,z555=",
+          "shoupai": "p777s1234407s6,z555=",
           "baojia": 3,
           "fubaopai": null,
           "defen": 5800,
@@ -2261,6 +2263,7 @@
             0,
             -5800
           ],
+          "n_kita": 1,
           "fu": 30,
           "fanshu": 3
         }
@@ -3787,7 +3790,7 @@
       {
         "hule": {
           "l": 0,
-          "shoupai": "p12305678s34456s5,z4444",
+          "shoupai": "p12305678s34456s5",
           "baojia": null,
           "fubaopai": [
             "z1"
@@ -3825,6 +3828,7 @@
             -4000,
             0
           ],
+          "n_kita": 1,
           "fu": 20,
           "fanshu": 5
         }
@@ -5011,7 +5015,7 @@
       {
         "hule": {
           "l": 3,
-          "shoupai": "p123678s44678z11z1,z4444",
+          "shoupai": "p123678s44678z11z1",
           "baojia": 0,
           "fubaopai": [
             "z2"
@@ -5041,6 +5045,7 @@
             0,
             9000
           ],
+          "n_kita": 1,
           "fu": 40,
           "fanshu": 4
         }

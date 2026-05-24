@@ -27,6 +27,25 @@ index 402795e..3d4d4b4 100644
          else if (data.hule) {
              this.hule(data.hule);
          }
+diff --git a/node_modules/@kobalab/majiang-ui/lib/dialog.js b/node_modules/@kobalab/majiang-ui/lib/dialog.js
+index b3ff1be..bc03f97 100644
+--- a/node_modules/@kobalab/majiang-ui/lib/dialog.js
++++ b/node_modules/@kobalab/majiang-ui/lib/dialog.js
+@@ -44,8 +44,12 @@ module.exports = class HuleDialog {
+         new Shan($('.shan', this._node.hule), this._pai, this._model.shan)
+                                                             .redraw();
+ 
+-        new Shoupai($('.shoupai', this._node.hule), this._pai,
+-                    Majiang.Shoupai.fromString(hule.shoupai)).redraw(true);
++        let sp_view = new Shoupai($('.shoupai', this._node.hule), this._pai,
++                                  Majiang.Shoupai.fromString(hule.shoupai));
++        sp_view.redraw(true);
++        if (hule.n_kita) {
++            for (let i = 0; i < hule.n_kita; i++) sp_view.kita();
++        }
+ 
+         let hupai = $('.hupai', this._node.hule).empty();
+         if (hule.hupai) {
 diff --git a/node_modules/@kobalab/majiang-ui/lib/paipu.js b/node_modules/@kobalab/majiang-ui/lib/paipu.js
 index 18a1888..80c6d9b 100644
 --- a/node_modules/@kobalab/majiang-ui/lib/paipu.js

@@ -158,15 +158,15 @@ function hule(attr, oya) {
         fanshu += + yaku[i+1];
     }
 
+    const melds   = (attr.m ? attr.m.split(',').map(mc => mianzi(mc)).reverse() : []);
+    const n_kita  = type.sanma ? melds.filter(m => m === 'z4444').length : 0;
+    const mianzi_list = n_kita > 0 ? melds.filter(m => m !== 'z4444') : melds;
+
     let hule = {
         l:      (+ attr.who + 4 - oya) % 4,
         shoupai:  [ pai(attr.hai.split(',').filter(pn=> pn != attr.machi))
                                 + pai(attr.machi)
-                  ].concat(
-                      (attr.m ? attr.m.split(',') : [])
-                            .reverse()
-                            .map(mc=>mianzi(mc))
-                  ).join(','),
+                  ].concat(mianzi_list).join(','),
         baojia:   attr.who != attr.fromWho
                         ? (+ attr.fromWho + 4 - oya) % 4 : null,
         fubaopai: attr.doraHaiUra
@@ -175,6 +175,7 @@ function hule(attr, oya) {
         defen:    + ten[1],
         hupai:    hupai,
         fenpei:   sc,
+        ...(n_kita > 0 && { n_kita }),
     };
     if (yakuman.length) {
         hule.damanguan = yakuman.length;
