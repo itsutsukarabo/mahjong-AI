@@ -11,7 +11,7 @@ const { hide, show, fadeIn, scale   } = Majiang.UI.Util;
 
 $(function(){
 
-    const tenhou_log = 'https://kobalab.net/majiang/tenhou-log/';
+    const tenhou_log = 'http://localhost:8001/tenhou-log/';
 
     const pai   = Majiang.UI.pai($('#loaddata'));
     const audio = Majiang.UI.audio($('#loaddata'));
