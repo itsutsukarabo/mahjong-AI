@@ -718,10 +718,12 @@ suite('Majiang.Game', ()=>{
             game.zimo();
             MSG = [];
             game._sync = false;
-            game.stop(done);
+            game.stop(()=>{
+                assert.equal(MSG.length, 4);
+                done();
+            });
             game.hule();
             assert.equal(MSG.length, 0);
-            setTimeout(()=>assert.equal(MSG.length, 4), 20);
         });
 
         test('立直・一発', ()=>{
