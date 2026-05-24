@@ -66,6 +66,7 @@ module.exports = class Board {
             this.defen[this.player_id[l]] = qipai.defen[l];
         }
         this.lunban     = -1;
+        this.n_kita     = [0, 0, 0, 0];
 
         this._lizhi     = false;
         this._fenpei    = null;
@@ -109,6 +110,7 @@ module.exports = class Board {
     kita(kita) {
         this.lunban = kita.l;
         this.shoupai[kita.l].dapai(kita.p, false);
+        this.n_kita[kita.l]++;
     }
 
     kaigang(kaigang) {

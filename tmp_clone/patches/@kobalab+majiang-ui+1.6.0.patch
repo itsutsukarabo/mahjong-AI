@@ -1,3 +1,32 @@
+diff --git a/node_modules/@kobalab/majiang-ui/lib/board.js b/node_modules/@kobalab/majiang-ui/lib/board.js
+index 402795e..3d4d4b4 100644
+--- a/node_modules/@kobalab/majiang-ui/lib/board.js
++++ b/node_modules/@kobalab/majiang-ui/lib/board.js
+@@ -148,10 +148,11 @@ module.exports = class Board {
+             }
+ 
+             let open = this._model.player_id[l] == this.viewpoint;
+-            this._view.shoupai[l]
+-                    = new Shoupai(show($(`.shoupai.${c}`, this._root)),
++            let sp = new Shoupai(show($(`.shoupai.${c}`, this._root)),
+                                     this._pai, this._model.shoupai[l])
+-                        .redraw(open || this.open_shoupai).adjust();
++                        .redraw(open || this.open_shoupai);
++            for (let i = 0; i < this._model.n_kita[l]; i++) sp.kita();
++            this._view.shoupai[l] = sp.adjust();
+ 
+             this._view.he[l]
+                     = new He(show($(`.he.${c}`, this._root)),
+@@ -226,6 +227,9 @@ module.exports = class Board {
+         else if (data.kaigang) {
+             this._view.shan.redraw();
+         }
++        else if (data.kita) {
++            this._view.shoupai[data.kita.l].kita();
++        }
+         else if (data.hule) {
+             this.hule(data.hule);
+         }
 diff --git a/node_modules/@kobalab/majiang-ui/lib/paipu.js b/node_modules/@kobalab/majiang-ui/lib/paipu.js
 index 18a1888..80c6d9b 100644
 --- a/node_modules/@kobalab/majiang-ui/lib/paipu.js
@@ -30,3 +59,38 @@ index 18a1888..80c6d9b 100644
      hule(data) {
          if (! this._redo
              && ! this._paipu.log[this._log_idx][this._idx - 1].hule)
+diff --git a/node_modules/@kobalab/majiang-ui/lib/shoupai.js b/node_modules/@kobalab/majiang-ui/lib/shoupai.js
+index 6a03b9a..05524bc 100644
+--- a/node_modules/@kobalab/majiang-ui/lib/shoupai.js
++++ b/node_modules/@kobalab/majiang-ui/lib/shoupai.js
+@@ -20,6 +20,7 @@ module.exports = class Shoupai {
+         this._mianzi  = mianzi(pai);
+         this._shoupai = shoupai;
+         this._open    = open;
++        this._n_kita  = 0;
+     }
+ 
+     redraw(open) {
+@@ -58,6 +59,9 @@ module.exports = class Shoupai {
+         for (let m of this._shoupai._fulou) {
+             this._node.fulou.append(this._mianzi(m));
+         }
++        for (let i = 0; i < this._n_kita; i++) {
++            this._node.fulou.append($('<span class="mianzi kita">').append(this._pai('z4')));
++        }
+ 
+         return this;
+     }
+@@ -78,6 +82,12 @@ module.exports = class Shoupai {
+         return this;
+     }
+ 
++    kita() {
++        this._n_kita++;
++        this._node.fulou.append($('<span class="mianzi kita">').append(this._pai('z4')));
++        return this.adjust();
++    }
++
+     dapai(p) {
+ 
+         let dapai = $('.pai.dapai', this._node.bingpai);

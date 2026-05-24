@@ -233,6 +233,25 @@ suite('Majiang.Board', ()=>{
             board.dapai({ l: 0, p: 's1_' });
             assert.equal(board.he[0]._pai.length, 1);
         });
+        test('kita 後に n_kita がインクリメントされること', ()=>{
+            const board = init_kita_board();
+            assert.equal(board.n_kita[0], 0);
+            board.kita({ l: 0, p: 'z4' });
+            assert.equal(board.n_kita[0], 1);
+            board.kita({ l: 0, p: 'z4' });
+            assert.equal(board.n_kita[0], 2);
+        });
+        test('qipai 後に n_kita がリセットされること', ()=>{
+            const board = init_kita_board();
+            board.kita({ l: 0, p: 'z4' });
+            board.qipai({
+                zhuangfeng: 0, jushu: 1, changbang: 0, lizhibang: 0,
+                defen: [25000,25000,25000,25000],
+                baopai: 'm1',
+                shoupai: ['m123p456s789z4444','','','']
+            });
+            assert.deepEqual(board.n_kita, [0, 0, 0, 0]);
+        });
     });
 
     suite('kaigang(kaigang)', ()=>{
