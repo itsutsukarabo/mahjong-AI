@@ -1,0 +1,32 @@
+diff --git a/node_modules/@kobalab/majiang-ui/lib/paipu.js b/node_modules/@kobalab/majiang-ui/lib/paipu.js
+index 18a1888..80c6d9b 100644
+--- a/node_modules/@kobalab/majiang-ui/lib/paipu.js
++++ b/node_modules/@kobalab/majiang-ui/lib/paipu.js
+@@ -270,6 +270,7 @@ module.exports = class Paipu {
+             else if (data.gang)     this._model.gang(data.gang);
+             else if (data.gangzimo) this._model.zimo(data.gangzimo);
+             else if (data.kaigang)  this._model.kaigang(data.kaigang);
++            else if (data.kita)     this._model.kita(data.kita);
+             else if (data.hule)     this._model.hule(data.hule);
+             else if (data.pingju)   this._model.pingju(data.pingju);
+ 
+@@ -335,6 +336,7 @@ module.exports = class Paipu {
+         else if (data.gang)     this.gang(data);
+         else if (data.gangzimo) this.gangzimo(data);
+         else if (data.kaigang)  this.kaigang(data);
++        else if (data.kita)     this.kita(data);
+         else if (data.hule)     this.hule(data);
+         else if (data.pingju)   this.pingju(data);
+ 
+@@ -438,6 +440,11 @@ module.exports = class Paipu {
+         this._view.update(data);
+     }
+ 
++    kita(data) {
++        this._model.kita(data.kita);
++        this._view.update(data);
++    }
++
+     hule(data) {
+         if (! this._redo
+             && ! this._paipu.log[this._log_idx][this._idx - 1].hule)

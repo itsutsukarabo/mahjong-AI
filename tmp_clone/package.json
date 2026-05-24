@@ -4,6 +4,7 @@
   "description": "HTML5 + JavaScript で動作する麻雀アプリ「電脳麻将」",
   "private": true,
   "scripts": {
+    "postinstall": "patch-package",
     "build:html": "pug -o dist -P src/html/page/",
     "build:css": "stylus src/css/index.styl -o dist/css/majiang-2.5.1.css",
     "build:js": "webpack --mode development --devtool inline-source-map",
@@ -26,6 +27,7 @@
     "pug": "^3.0.3"
   },
   "devDependencies": {
+    "patch-package": "^8.0.1",
     "pug-cli": "^1.0.0-alpha6",
     "stylus": "^0.64.0",
     "webpack-cli": "^5.1.4"
