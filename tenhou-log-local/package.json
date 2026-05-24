@@ -5,7 +5,12 @@
   "scripts": {
     "test": "mocha -u tdd"
   },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
   "devDependencies": {
-    "mocha": "^11.0.0"
+    "mocha": "^11.0.0",
+    "sinon": "^19.0.2",
+    "supertest": "^7.1.0"
   }
 }
