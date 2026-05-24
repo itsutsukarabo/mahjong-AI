@@ -105,7 +105,10 @@ function qipai(attr) {
 
     let seed = attr.seed.split(',');
     let ten  = attr.ten.split(',').map(x=>x * 100);
-    let hai  = [0,1,2,3].map(l=>pai(attr[`hai${l}`].split(',')));
+    let hai  = [0,1,2,3].map(l=> {
+        const h = attr[`hai${l}`];
+        return h ? pai(h.split(',')) : '';
+    });
 
     ten = ten.concat(ten.splice(0, attr.oya));
     hai = hai.concat(hai.splice(0, attr.oya));
@@ -240,7 +243,6 @@ function convlog(xml, log_id) {
                         paipu.title  = log_id.substr(1);
                 else    paipu.title += `\n${log_id}`;
             }
-            if (type.sanma) throw new Error('Not Majiang log');
         }
         else if (elem == 'UN' && ! paipu.player) {
             paipu.player = parse_player(attr);
@@ -282,21 +284,27 @@ function convlog(xml, log_id) {
         else if (elem == 'N') {
             let l = (+attr.who + 4 - oya) % 4;
             let m = mianzi(attr.m);
-            if (m.match(/^[mpsz]\d{3}[\+\=\-]?\d$/)) {
-                log.push({gang:{l:l,m:m}});
+            if (type.sanma && m.match(/^z4{4}$/)) {
+                log.push({kita:{l:l, p:'z4'}});
                 gang = true;
             }
             else {
-                log.push({fulou:{l:l,m:m}});
-                if (m.match(/^[mpsz]\d{4}/)) gang = true;
-                else                         zimo = null;
-            }
-            if (m.match(/^[mpsz]\d{3}[\+\=\-]\d$/)) {
-                let o = m.replace(/\d$/,'');
-                fulou[+attr.who] = fulou[+attr.who].map(n=> n == o ? m : n);
-            }
-            else {
-                fulou[+attr.who].push(m);
+                if (m.match(/^[mpsz]\d{3}[\+\=\-]?\d$/)) {
+                    log.push({gang:{l:l,m:m}});
+                    gang = true;
+                }
+                else {
+                    log.push({fulou:{l:l,m:m}});
+                    if (m.match(/^[mpsz]\d{4}/)) gang = true;
+                    else                         zimo = null;
+                }
+                if (m.match(/^[mpsz]\d{3}[\+\=\-]\d$/)) {
+                    let o = m.replace(/\d$/,'');
+                    fulou[+attr.who] = fulou[+attr.who].map(n=> n == o ? m : n);
+                }
+                else {
+                    fulou[+attr.who].push(m);
+                }
             }
         }
         else if (elem == 'REACH') {
@@ -343,3 +351,4 @@ function convlog(xml, log_id) {
 }
 
 module.exports = convlog;
+module.exports.parse_type = parse_type;
