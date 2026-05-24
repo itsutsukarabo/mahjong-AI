@@ -195,6 +195,46 @@ suite('Majiang.Board', ()=>{
         });
     });
 
+    suite('kita(kita)', ()=>{
+        function init_kita_board() {
+            const board = new Majiang.Board({
+                title: 'タイトル',
+                player: ['私','下家','対面','上家'],
+                qijia: 0
+            });
+            board.qipai({
+                zhuangfeng: 0, jushu: 0, changbang: 0, lizhibang: 0,
+                defen: [25000,25000,25000,25000],
+                baopai: 'm1',
+                shoupai: ['m123p456s789z4444','','','']
+            });
+            return board;
+        }
+
+        const board = init_kita_board();
+        board.kita({ l: 0, p: 'z4' });
+
+        test('手番が更新されること', ()=>
+            assert.equal(board.lunban, 0));
+        test('手牌から z4 が 1 枚除去されること', ()=>
+            assert.equal(board.shoupai[0]._bingpai.z[4], 3));
+        test('複数回連続して呼べること（残り枚数が毎回 1 減ること）', ()=>{
+            const board = init_kita_board();
+            for (let i = 4; i >= 1; i--) {
+                assert.equal(board.shoupai[0]._bingpai.z[4], i);
+                board.kita({ l: 0, p: 'z4' });
+            }
+            assert.equal(board.shoupai[0]._bingpai.z[4], 0);
+        });
+        test('kita 後に zimo / dapai が正常に呼べること', ()=>{
+            const board = init_kita_board();
+            board.kita({ l: 0, p: 'z4' });
+            board.zimo({ l: 0, p: 's1' });
+            board.dapai({ l: 0, p: 's1_' });
+            assert.equal(board.he[0]._pai.length, 1);
+        });
+    });
+
     suite('kaigang(kaigang)', ()=>{
         const board = init_board();
         board.zimo({ l: 0, p: 'm1' });

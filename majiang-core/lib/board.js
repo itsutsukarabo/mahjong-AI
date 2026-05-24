@@ -106,6 +106,11 @@ module.exports = class Board {
         this.shoupai[gang.l].gang(gang.m, false);
     }
 
+    kita(kita) {
+        this.lunban = kita.l;
+        this.shoupai[kita.l].dapai(kita.p, false);
+    }
+
     kaigang(kaigang) {
         this.shan.kaigang(kaigang.baopai);
     }
