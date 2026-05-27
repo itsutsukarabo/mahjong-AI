@@ -128,17 +128,26 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"device: {device}")
 
-    # データ読み込み
-    def load(split):
-        p = DATA_DIR / f"hand_inference_{split}.json"
-        if not p.exists():
-            print(f"ファイルなし: {p}")
-            sys.exit(1)
-        return json.loads(p.read_text())
+    # データ読み込み（NDJSON形式、1行1サンプル）
+    ndjson_path = DATA_DIR / "hand_inference.ndjson"
+    if not ndjson_path.exists():
+        print(f"ファイルなし: {ndjson_path}")
+        sys.exit(1)
+    print(f"読み込み中: {ndjson_path}")
+    with open(ndjson_path, encoding="utf-8") as f:
+        all_data = [json.loads(line) for line in f if line.strip()]
+    print(f"総サンプル数: {len(all_data)}")
 
-    train_data = load("train")
-    val_data   = load("val")
-    test_data  = load("test")
+    # シャッフルして train/val/test 分割
+    import random
+    random.seed(42)
+    random.shuffle(all_data)
+    n = len(all_data)
+    n_train = int(n * 0.8)
+    n_val   = int(n * 0.1)
+    train_data = all_data[:n_train]
+    val_data   = all_data[n_train:n_train + n_val]
+    test_data  = all_data[n_train + n_val:]
     print(f"train: {len(train_data)}, val: {len(val_data)}, test: {len(test_data)}")
 
     train_ds = HandInferenceDataset(train_data)

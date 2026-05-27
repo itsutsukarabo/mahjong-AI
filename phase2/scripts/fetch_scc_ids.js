@@ -9,8 +9,11 @@
  *   # 個別のscc*.html.gzファイルが入ったディレクトリから抽出
  *   node fetch_scc_ids.js --dir data/raw/scc/ --out data/raw/ids_scc.txt
  *
- *   # 直近7日分をtenhou.netから直接取得してIDを抽出
+ *   # 直近分をtenhou.netから直接取得してIDを抽出（約56日分、1344ファイル）
  *   node fetch_scc_ids.js --from-web --out data/raw/ids_scc_recent.txt
+ *
+ *   # 最新50ファイル分だけ取得（高速確認用）
+ *   node fetch_scc_ids.js --from-web --max-files 50 --out data/raw/ids_scc_recent.txt
  *
  * 出力: 1行1IDのテキストファイル（download_paipu.js の --ids-file 引数に渡す）
  */
@@ -204,22 +207,25 @@ async function from_web() {
     const list_buf  = await fetch_buf(LIST_URL);
     const list_text = list_buf.toString('utf8');
 
-    // list.cgi は list([{file:"scc...",size:...},...]); 形式
-    const file_re = /"(scc[^"]+\.html\.gz)"/g;
+    // list.cgi は list([{file:'scc...',size:...},...]); 形式（シングルクォート）
+    const file_re = /'(scc[^']+\.html\.gz)'/g;
     const scc_files = [];
     let m;
     while ((m = file_re.exec(list_text)) !== null) scc_files.push(m[1]);
     console.log(`  sccファイル数: ${scc_files.length}`);
 
+    // --max-files でファイル数を制限（デフォルト: 全件）
+    const MAX_FILES = opts['max-files'] ? parseInt(opts['max-files']) : scc_files.length;
+    const target_files = scc_files.slice(0, MAX_FILES);
+
     const all_ids = new Set();
-    for (const fname of scc_files) {
+    for (const fname of target_files) {
         const url = `http://tenhou.net/sc/raw/dat/${fname}`;
         try {
             const buf  = await fetch_buf(url);
             const html = await gunzip_buf(buf);
             extract_ids_from_html(html).forEach(id => all_ids.add(id));
-            process.stdout.write(`  ${all_ids.size} IDs\r`);
-            // /sc/raw/ ファイルは20分間隔ルールが適用されるため --from-web は少数取得用
+            process.stdout.write(`  ${all_ids.size} IDs (${target_files.indexOf(fname) + 1}/${target_files.length})\r`);
         } catch (e) {
             console.error(`  失敗: ${fname}: ${e.message}`);
         }

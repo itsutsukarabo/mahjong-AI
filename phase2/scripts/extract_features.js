@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 /**
- * 局面状態 NDJSON → 特徴量ベクトル + ラベル JSON
+ * 局面状態 NDJSON → 特徴量ベクトル + ラベル NDJSON
  *
  * parse_paipu.js の出力を読み込み、3モデル用の特徴量を生成する。
+ * train/val/test の分割は Python 側（train_*.py）で行う。
  *
  * 使い方:
  *   node extract_features.js --src data/states/states.ndjson --dest data/features/
  *   node extract_features.js --src data/states/ --dest data/features/
- *   node extract_features.js --src data/states/states.ndjson --dest data/features/ --split 0.8,0.1,0.1
+ *
+ * 出力:
+ *   hand_inference.ndjson  (1行1サンプル)
+ *   behavior_clone.ndjson
+ *   value_function.ndjson
  */
 'use strict';
 
@@ -30,7 +35,6 @@ for (let i = 0; i < args.length; i++) {
 
 const SRC   = opts['src']   || 'data/states';
 const DEST  = opts['dest']  || 'data/features';
-const SPLIT = (opts['split'] || '0.8,0.1,0.1').split(',').map(Number);
 
 // ---- 牌エンコーディング定数 ----
 
@@ -305,22 +309,6 @@ async function process_file(filepath) {
     return all;
 }
 
-function shuffle_split(arr, ratios) {
-    // Fisher-Yates shuffle
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    const n = arr.length;
-    const n_train = Math.floor(n * ratios[0]);
-    const n_val   = Math.floor(n * ratios[1]);
-    return {
-        train: arr.slice(0, n_train),
-        val:   arr.slice(n_train, n_train + n_val),
-        test:  arr.slice(n_train + n_val),
-    };
-}
-
 async function main() {
     const files = collect_ndjson_files(SRC);
     if (files.length === 0) {
@@ -330,50 +318,38 @@ async function main() {
 
     fs.mkdirSync(DEST, { recursive: true });
 
-    let all_records = [];
-    for (const f of files) {
-        process.stdout.write(`読み込み中: ${path.basename(f)} ... `);
-        const recs = await process_file(f);
-        console.log(`${recs.length} レコード`);
-        all_records.push(...recs);
-    }
-
-    console.log(`合計: ${all_records.length} レコード`);
-
-    // 3モデル用のサンプル生成
-    const hi_samples  = [];  // hand_inference
-    const bc_samples  = [];  // behavior_clone
-    const vf_samples  = [];  // value_function
-
-    for (const rec of all_records) {
-        // 行動クローン・価値関数: 意思決定者1件
-        bc_samples.push(make_behavior_clone_sample(rec));
-        vf_samples.push(make_value_sample(rec));
-
-        // 手牌類推: 他家3名分
-        for (let target_l = 0; target_l < 4; target_l++) {
-            if (target_l === rec.l) continue;  // 自分は除く
-            hi_samples.push(make_hand_inference_sample(rec, target_l));
-        }
-    }
-
-    // train/val/test 分割して保存
-    const datasets = {
-        hand_inference:  hi_samples,
-        behavior_clone:  bc_samples,
-        value_function:  vf_samples,
+    const streams = {
+        hand_inference: fs.createWriteStream(path.join(DEST, 'hand_inference.ndjson'), { encoding: 'utf8' }),
+        behavior_clone: fs.createWriteStream(path.join(DEST, 'behavior_clone.ndjson'), { encoding: 'utf8' }),
+        value_function: fs.createWriteStream(path.join(DEST, 'value_function.ndjson'), { encoding: 'utf8' }),
     };
 
-    for (const [name, samples] of Object.entries(datasets)) {
-        const splits = shuffle_split(samples, SPLIT);
-        for (const [split_name, data] of Object.entries(splits)) {
-            const out_path = path.join(DEST, `${name}_${split_name}.json`);
-            fs.writeFileSync(out_path, JSON.stringify(data));
-            console.log(`保存: ${out_path} (${data.length} サンプル)`);
+    let total_recs = 0, hi_cnt = 0, bc_cnt = 0, vf_cnt = 0;
+
+    for (const f of files) {
+        process.stdout.write(`処理中: ${path.basename(f)} ... `);
+        const recs = await process_file(f);
+        for (const rec of recs) {
+            streams.behavior_clone.write(JSON.stringify(make_behavior_clone_sample(rec)) + '\n');
+            streams.value_function.write(JSON.stringify(make_value_sample(rec)) + '\n');
+            bc_cnt++;
+            vf_cnt++;
+            for (let target_l = 0; target_l < 4; target_l++) {
+                if (target_l === rec.l) continue;
+                streams.hand_inference.write(JSON.stringify(make_hand_inference_sample(rec, target_l)) + '\n');
+                hi_cnt++;
+            }
         }
+        total_recs += recs.length;
+        console.log(`${recs.length} レコード`);
     }
 
-    console.log('完了');
+    await Promise.all(Object.values(streams).map(s => new Promise(r => s.end(r))));
+
+    console.log(`完了: ${total_recs} レコード処理`);
+    console.log(`  hand_inference: ${hi_cnt} サンプル → ${path.join(DEST, 'hand_inference.ndjson')}`);
+    console.log(`  behavior_clone: ${bc_cnt} サンプル → ${path.join(DEST, 'behavior_clone.ndjson')}`);
+    console.log(`  value_function: ${vf_cnt} サンプル → ${path.join(DEST, 'value_function.ndjson')}`);
 }
 
 main().catch(err => {
