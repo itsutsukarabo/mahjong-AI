@@ -182,24 +182,91 @@
   .ai-phase2-slots
     margin-top 10px
     border-top 1px solid #3a3a3a
-    padding-top 10px
+    padding-top 8px
+
     .ai-phase2-header
       font-size 10px
-      color #555
+      color #666
+      margin-bottom 6px
+
+    .ai-p2-section
       margin-bottom 8px
-    .ai-slot-placeholder
-      display inline-block
-      background #1e1e1e
-      border 1px dashed #444
-      border-radius 4px
-      padding 8px 14px
-      margin 0 8px 8px 0
-      min-width 150px
-      vertical-align top
-      .ai-slot-title
+
+    .ai-p2-label
+      font-size 11px
+      color #888
+      margin-bottom 3px
+
+    // 打牌予測テーブル
+    .ai-p2-table
+      border-collapse collapse
+      width 100%
+      font-size 12px
+      td
+        padding 2px 4px
+        vertical-align middle
+      .ai-p2-tile
+        width 32px
+        img
+          vertical-align middle
+      .ai-p2-bar
+        width 100%
+
+    .ai-prob-wrap
+      display flex
+      align-items center
+      gap 6px
+      height 14px
+      .ai-prob-fill
+        height 10px
+        background #4a8a4a
+        border-radius 2px
+        min-width 2px
+      span
         font-size 11px
-        color #555
+        color #aaa
+        white-space nowrap
+        font-family monospace
+
+    // 局面評価
+    .ai-vf-body
+      .ai-vf-row
+        display inline-block
+        margin-right 16px
+        font-size 12px
+        b
+          font-family monospace
+          margin-left 4px
+        .ai-pos
+          color #6e6
+        .ai-neg
+          color #e66
+
+    // 他家手牌推定
+    .ai-hi-body
+      .ai-hi-row
+        display flex
+        align-items center
+        flex-wrap wrap
+        gap 3px
         margin-bottom 4px
-      .ai-slot-body
-        font-size 10px
-        color #3a3a3a
+        min-height 24px
+      .ai-hi-seat
+        font-size 11px
+        color #888
+        min-width 28px
+        flex-shrink 0
+      .ai-hi-cell
+        display inline-flex
+        align-items flex-end
+        img
+          vertical-align bottom
+        sub
+          font-size 9px
+          color #aaa
+          margin-left 1px
+          font-family monospace
+
+    .ai-p2-na
+      font-size 11px
+      color #555

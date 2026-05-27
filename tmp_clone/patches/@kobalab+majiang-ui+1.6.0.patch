@@ -140,7 +140,7 @@ index b3ff1be..bc03f97 100644
          let hupai = $('.hupai', this._node.hule).empty();
          if (hule.hupai) {
 diff --git a/node_modules/@kobalab/majiang-ui/lib/paipu.js b/node_modules/@kobalab/majiang-ui/lib/paipu.js
-index 18a1888..83b9d28 100644
+index 18a1888..cfb8354 100644
 --- a/node_modules/@kobalab/majiang-ui/lib/paipu.js
 +++ b/node_modules/@kobalab/majiang-ui/lib/paipu.js
 @@ -8,6 +8,7 @@ const Board   = require('./board');
@@ -224,7 +224,7 @@ index 18a1888..83b9d28 100644
      hule(data) {
          if (! this._redo
              && ! this._paipu.log[this._log_idx][this._idx - 1].hule)
-@@ -736,6 +757,191 @@ module.exports = class Paipu {
+@@ -736,6 +757,272 @@ module.exports = class Paipu {
          set_data();
      }
  
@@ -248,17 +248,15 @@ index 18a1888..83b9d28 100644
 +        modal.find('.ai-modal-loading').show().text('計算中...');
 +
 +        setTimeout(() => {
-+            try {
-+                this._do_ai_analyze(modal);
-+            } catch(e) {
++            this._do_ai_analyze(modal).catch(e => {
 +                console.error('AI Analysis error:', e);
 +                modal.find('.ai-modal-loading').text('エラー: ' + e.message);
-+            }
++            });
 +        }, 20);
 +        return false;
 +    }
 +
-+    _do_ai_analyze(modal) {
++    async _do_ai_analyze(modal) {
 +        const { analyze } = require('./ai-analyzer-engine');
 +        const result = analyze(
 +            this._paipu,
@@ -266,6 +264,22 @@ index 18a1888..83b9d28 100644
 +            this._idx - 1,
 +            this._view.viewpoint
 +        );
++
++        if (window.AI_PHASE2 && result.analysis_type !== null) {
++            try {
++                result.phase2 = await window.AI_PHASE2.analyze(
++                    this._paipu,
++                    this._log_idx,
++                    this._idx - 1,
++                    this._model,
++                    result.menfeng,
++                    result.analysis_type
++                );
++            } catch(e) {
++                console.warn('AI Phase2 error:', e);
++            }
++        }
++
 +        this._render_ai_modal(modal, result);
 +    }
 +
@@ -357,6 +371,8 @@ index 18a1888..83b9d28 100644
 +        this._render_ai_paishu(modal, paishu);
 +        if (paijia_fn) this._render_ai_paijia(modal, paijia_fn);
 +
++        this._render_phase2(modal, result.phase2);
++
 +        modal.find('.ai-tab-btn').removeClass('active');
 +        modal.find('.ai-tab-pane').addClass('hide');
 +        const active_tab = analysis_type === 'fulou' ? 'fulou' : 'dapai';
@@ -365,6 +381,71 @@ index 18a1888..83b9d28 100644
 +
 +        modal.find('.ai-modal-loading').hide();
 +        modal.find('.ai-modal-body').show();
++    }
++
++    _render_phase2(modal, phase2) {
++        const PAI_NAMES_P2 = [];
++        for (let i = 1; i <= 9; i++) PAI_NAMES_P2.push('m' + i);
++        for (let i = 1; i <= 9; i++) PAI_NAMES_P2.push('p' + i);
++        for (let i = 1; i <= 9; i++) PAI_NAMES_P2.push('s' + i);
++        for (let i = 1; i <= 7; i++) PAI_NAMES_P2.push('z' + i);
++        const pai = this._pai;
++
++        // 打牌予測 (行動クローン)
++        const bc_body = modal.find('.ai-bc-body').empty();
++        if (phase2 && phase2.behavior_clone) {
++            const tbody = $('<tbody>');
++            for (const act of phase2.behavior_clone.top_actions) {
++                const pct = (act.prob * 100).toFixed(1);
++                const tr  = $('<tr>');
++                tr.append($('<td class="ai-p2-tile">').append(pai(act.tile)));
++                tr.append($('<td class="ai-p2-bar">').html(
++                    `<div class="ai-prob-wrap"><div class="ai-prob-fill" style="width:${pct}%"></div><span>${pct}%</span></div>`
++                ));
++                tbody.append(tr);
++            }
++            bc_body.append($('<table class="ai-p2-table">').append(tbody));
++        } else if (phase2) {
++            bc_body.html('<span class="ai-p2-na">打牌分析対象外</span>');
++        } else {
++            bc_body.html('<span class="ai-p2-na">モデル未ロード</span>');
++        }
++
++        // 局面評価 (価値関数)
++        const vf_body = modal.find('.ai-vf-body').empty();
++        if (phase2 && phase2.value_function) {
++            const { round_score, final_score } = phase2.value_function;
++            const rs = Math.round(round_score);
++            const fs = (final_score / 1000).toFixed(1);
++            vf_body.html(
++                `<span class="ai-vf-row">この局: <b class="${rs >= 0 ? 'ai-pos' : 'ai-neg'}">${rs >= 0 ? '+' : ''}${rs}点</b></span>` +
++                `<span class="ai-vf-row">着順点予測: <b class="${final_score >= 0 ? 'ai-pos' : 'ai-neg'}">${final_score >= 0 ? '+' : ''}${fs}k</b></span>`
++            );
++        } else {
++            vf_body.html('<span class="ai-p2-na">-</span>');
++        }
++
++        // 他家手牌推定
++        const hi_body = modal.find('.ai-hi-body').empty();
++        if (phase2 && phase2.hand_inference) {
++            for (const p of phase2.hand_inference.players) {
++                const row = $('<div class="ai-hi-row">');
++                row.append($('<span class="ai-hi-seat">').text(p.seat_name + ':'));
++                if (p.top.length === 0) {
++                    row.append($('<span class="ai-p2-na">').text('推定不可'));
++                } else {
++                    for (const t of p.top) {
++                        const cell = $('<span class="ai-hi-cell">');
++                        cell.append(pai(t.tile));
++                        cell.append($('<sub>').text(t.exp.toFixed(1)));
++                        row.append(cell);
++                    }
++                }
++                hi_body.append(row);
++            }
++        } else {
++            hi_body.html('<span class="ai-p2-na">-</span>');
++        }
 +    }
 +
 +    _render_ai_paishu(modal, paishu) {
