@@ -1,0 +1,14 @@
+{
+  "input_dim": 136,
+  "hidden_dims": [
+    256,
+    256,
+    128
+  ],
+  "n_actions": 34,
+  "dropout": 0.3,
+  "lr": 0.001,
+  "batch_size": 512,
+  "epochs": 50,
+  "early_stop_patience": 5
+}

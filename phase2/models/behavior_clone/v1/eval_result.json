@@ -1,0 +1,18 @@
+{
+  "test_loss": 1.5108369972076385,
+  "test_acc": 0.49589227553351806,
+  "config": {
+    "input_dim": 136,
+    "hidden_dims": [
+      256,
+      256,
+      128
+    ],
+    "n_actions": 34,
+    "dropout": 0.3,
+    "lr": 0.001,
+    "batch_size": 512,
+    "epochs": 50,
+    "early_stop_patience": 5
+  }
+}
