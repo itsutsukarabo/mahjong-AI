@@ -1,3 +1,96 @@
+diff --git a/node_modules/@kobalab/majiang-ui/lib/ai-analyzer-engine.js b/node_modules/@kobalab/majiang-ui/lib/ai-analyzer-engine.js
+new file mode 100644
+index 0000000..6a6749e
+--- /dev/null
++++ b/node_modules/@kobalab/majiang-ui/lib/ai-analyzer-engine.js
+@@ -0,0 +1,87 @@
++/*
++ *  AI Analyzer Engine
++ *  DOM に依存しない純粋な分析ロジック。テスト可能。
++ */
++'use strict';
++
++const AI     = require('@kobalab/majiang-ai');
++const Majiang = require('@kobalab/majiang-core');
++
++/**
++ * 指定した局面まで AI プレイヤーをリプレイし、分析結果を返す。
++ *
++ * @param {object} paipu      - 牌譜オブジェクト (title, player, qijia, log)
++ * @param {number} log_idx    - 対象の局インデックス
++ * @param {number} current_idx - 分析対象の手番インデックス (0-base, inclusive)
++ * @param {number} viewpoint  - 分析視点のプレイヤー ID
++ * @returns {object} 分析結果
++ *   - dapai_info  : 打牌候補配列 [{p, n_xiangting, ev, tingpai, n_tingpai, weixian, selected?}]
++ *   - fulou_info  : 副露候補配列 [{m, n_xiangting, ev}]
++ *   - analysis_type : 'dapai' | 'fulou' | null
++ *   - best_dapai  : AI が選んだ最良打牌 (文字列) または null
++ *   - paishu      : 残り牌数 {m:[...], p:[...], s:[...], z:[...]}
++ *   - paijia_fn   : (p: string) => number  手牌文脈を考慮した牌価値関数
++ *   - menfeng     : 視点プレイヤーの門風
++ */
++function analyze(paipu, log_idx, current_idx, viewpoint) {
++    const log = paipu.log[log_idx];
++
++    const player = new AI();
++    player.action({ kaiju: {
++        id:     viewpoint,
++        rule:   Majiang.rule(),
++        title:  paipu.title,
++        player: paipu.player,
++        qijia:  paipu.qijia,
++    }}, ()=>{});
++
++    for (let i = 0; i <= current_idx; i++) {
++        player.action(log[i], ()=>{});
++    }
++
++    const current = log[current_idx];
++    const mf = player._menfeng;
++    const dapai_info = [];
++    const fulou_info = [];
++    let analysis_type = null;
++    let best_dapai = null;
++
++    if (current.zimo && current.zimo.l === mf) {
++        analysis_type = 'dapai';
++        player.select_gang(dapai_info);
++        best_dapai = player.select_dapai(dapai_info);
++        dapai_info.forEach(i => {
++            if (!i.m && i.p === best_dapai.slice(0, 2)) i.selected = true;
++        });
++    } else if (current.gangzimo && current.gangzimo.l === mf) {
++        analysis_type = 'dapai';
++        best_dapai = player.select_dapai(dapai_info);
++        dapai_info.forEach(i => {
++            if (i.p === best_dapai.slice(0, 2)) i.selected = true;
++        });
++    } else if (current.fulou && current.fulou.l === mf
++               && !current.fulou.m.match(/^[mpsz]\d{4}/)) {
++        analysis_type = 'dapai';
++        best_dapai = player.select_dapai(dapai_info);
++        dapai_info.forEach(i => {
++            if (i.p === best_dapai.slice(0, 2)) i.selected = true;
++        });
++    } else if (current.dapai && current.dapai.l !== mf) {
++        analysis_type = 'fulou';
++        player.select_fulou(current.dapai, fulou_info);
++    }
++
++    const suanpai = player._suanpai;
++
++    return {
++        dapai_info,
++        fulou_info,
++        analysis_type,
++        best_dapai,
++        paishu:    suanpai._paishu,
++        paijia_fn: player.shoupai ? suanpai.make_paijia(player.shoupai) : null,
++        menfeng:   mf,
++    };
++}
++
++module.exports = { analyze };
 diff --git a/node_modules/@kobalab/majiang-ui/lib/board.js b/node_modules/@kobalab/majiang-ui/lib/board.js
 index 402795e..3d4d4b4 100644
 --- a/node_modules/@kobalab/majiang-ui/lib/board.js
@@ -47,10 +140,64 @@ index b3ff1be..bc03f97 100644
          let hupai = $('.hupai', this._node.hule).empty();
          if (hule.hupai) {
 diff --git a/node_modules/@kobalab/majiang-ui/lib/paipu.js b/node_modules/@kobalab/majiang-ui/lib/paipu.js
-index 18a1888..80c6d9b 100644
+index 18a1888..e6d9ad0 100644
 --- a/node_modules/@kobalab/majiang-ui/lib/paipu.js
 +++ b/node_modules/@kobalab/majiang-ui/lib/paipu.js
-@@ -270,6 +270,7 @@ module.exports = class Paipu {
+@@ -8,6 +8,7 @@ const Board   = require('./board');
+ 
+ const { hide, show } = require('./fadein');
+ const logconv = require('@kobalab/tenhou-url-log');
++const AI = require('@kobalab/majiang-ai');
+ 
+ const class_name = ['main','xiajia','duimian','shangjia'];
+ 
+@@ -16,6 +17,7 @@ module.exports = class Paipu {
+     constructor(root, paipu, pai, audio, pref, callback, analyzer) {
+         this._root  = root;
+         this._paipu = paipu;
++        this._pai   = pai;
+         this._model = new Majiang.Board(paipu);
+         this._view  = new Board($('.board', root), pai, audio, this._model);
+         this._pref  = pref;
+@@ -109,8 +111,9 @@ module.exports = class Paipu {
+         $('.first',    ctrl).on('mousedown', ()=>this.backward());
+         $('.play',     ctrl).on('mousedown', ()=>this.autoplay());
+         $('.summary',  ctrl).on('mousedown', ()=>this.summary());
+-        $('.analyzer', ctrl).on('mousedown', ()=>this.analyzer());
+-        $('.export',   ctrl).on('mousedown', ()=>this.tenhou_dialog());
++        $('.analyzer',   ctrl).on('mousedown', ()=>this.analyzer());
++        $('.ai-analyze', ctrl).on('mousedown', ()=>this.ai_analyze());
++        $('.export',     ctrl).on('mousedown', ()=>this.tenhou_dialog());
+         $('.sound',    ctrl).on('mousedown', ()=>this.sound(
+                                                     ! this._view.sound_on));
+         $('.minus',    ctrl).on('mousedown', ()=>this.speed(this._speed - 1));
+@@ -155,6 +158,7 @@ module.exports = class Paipu {
+             else if (ev.key == 'v') this.viewpoint(this._view.viewpoint + 1);
+             else if (ev.key == '?') this.summary();
+             else if (ev.key == 'i') this.analyzer();
++            else if (ev.key == 'u') this.ai_analyze();
+             else if (ev.key == 't') this.tenhou_dialog();
+             else if (ev.key == 'a') this.sound(! this._view.sound_on);
+             else if (ev.key == '-') this.speed(this._speed - 1);
+@@ -184,6 +188,17 @@ module.exports = class Paipu {
+             else if (ev.key == 'ArrowUp')   this.prev();
+         });
+ 
++        const modal = $('.ai-modal', this._root);
++        $('.ai-modal-close', modal).off('click').on('click', ()=>modal.addClass('hide'));
++        $('.ai-modal-overlay', modal).off('click').on('click', ()=>modal.addClass('hide'));
++        $('.ai-tab-btn', modal).off('click').on('click', function() {
++            const tab = $(this).data('tab');
++            $('.ai-tab-btn', modal).removeClass('active');
++            $(this).addClass('active');
++            $('.ai-tab-pane', modal).addClass('hide');
++            $(`#ai-tab-${tab}`, modal).removeClass('hide');
++        });
++
+         let pref = this.get_pref();
+         this.sound(pref.sound_on);
+         this.speed(pref.speed);
+@@ -270,6 +285,7 @@ module.exports = class Paipu {
              else if (data.gang)     this._model.gang(data.gang);
              else if (data.gangzimo) this._model.zimo(data.gangzimo);
              else if (data.kaigang)  this._model.kaigang(data.kaigang);
@@ -58,7 +205,7 @@ index 18a1888..80c6d9b 100644
              else if (data.hule)     this._model.hule(data.hule);
              else if (data.pingju)   this._model.pingju(data.pingju);
  
-@@ -335,6 +336,7 @@ module.exports = class Paipu {
+@@ -335,6 +351,7 @@ module.exports = class Paipu {
          else if (data.gang)     this.gang(data);
          else if (data.gangzimo) this.gangzimo(data);
          else if (data.kaigang)  this.kaigang(data);
@@ -66,7 +213,7 @@ index 18a1888..80c6d9b 100644
          else if (data.hule)     this.hule(data);
          else if (data.pingju)   this.pingju(data);
  
-@@ -438,6 +440,11 @@ module.exports = class Paipu {
+@@ -438,6 +455,11 @@ module.exports = class Paipu {
          this._view.update(data);
      }
  
@@ -78,6 +225,188 @@ index 18a1888..80c6d9b 100644
      hule(data) {
          if (! this._redo
              && ! this._paipu.log[this._log_idx][this._idx - 1].hule)
+@@ -736,6 +758,181 @@ module.exports = class Paipu {
+         set_data();
+     }
+ 
++    ai_analyze() {
++        if (this._summary || this._log_idx < 0) return true;
++        if (this._autoplay) this.autoplay();
++
++        const modal = $('.ai-modal', this._root);
++        modal.removeClass('hide');
++        modal.find('.ai-modal-body').hide();
++        modal.find('.ai-modal-loading').show().text('計算中...');
++
++        setTimeout(() => {
++            try {
++                this._do_ai_analyze(modal);
++            } catch(e) {
++                console.error('AI Analysis error:', e);
++                modal.find('.ai-modal-loading').text('エラー: ' + e.message);
++            }
++        }, 20);
++        return false;
++    }
++
++    _do_ai_analyze(modal) {
++        const { analyze } = require('./ai-analyzer-engine');
++        const result = analyze(
++            this._paipu,
++            this._log_idx,
++            this._idx - 1,
++            this._view.viewpoint
++        );
++        this._render_ai_modal(modal, result);
++    }
++
++    _render_ai_modal(modal, result) {
++        const { dapai_info, fulou_info, analysis_type, paishu, paijia_fn } = result;
++        const pai = this._pai;
++
++        const cmp = (a, b) => {
++            if (a.selected) return -1;
++            if (b.selected) return  1;
++            return (b.ev ?? -Infinity) - (a.ev ?? -Infinity);
++        };
++        dapai_info.sort(cmp);
++        fulou_info.sort(cmp);
++
++        const dapai_body = modal.find('.ai-dapai-body').empty();
++        for (const item of dapai_info) {
++            const tr = $('<tr>');
++            if (item.selected) tr.addClass('ai-selected');
++
++            const td_p = $('<td class="ai-cand-tile">');
++            if (item.n_xiangting < 0) {
++                td_p.text('和了');
++            } else if (item.m) {
++                td_p.append(pai(item.p)).append($('<span>').text('カン'));
++            } else {
++                td_p.append(pai(item.p));
++                if (item.p && item.p.slice(-1) == '*') td_p.append($('<span>').text('リーチ'));
++            }
++
++            const td_x = $('<td class="ai-xiangting">').text(
++                item.n_xiangting < 0  ? '和了形' :
++                item.n_xiangting == 0 ? '聴牌'   : `${item.n_xiangting}向聴`
++            );
++
++            const weixian_cls = item.weixian >= 13.0 ? 'ai-ev-high'
++                              : item.weixian >=  8.0 ? 'ai-ev-middle'
++                              : item.weixian >=  3.2 ? 'ai-ev-low'
++                              : item.weixian ==  0.0 ? 'ai-ev-none'
++                              : '';
++            const td_ev = $('<td class="ai-ev">').addClass(weixian_cls);
++            if (item.ev == null) {
++                td_ev.text('オリ');
++            } else if (item.n_xiangting > 2) {
++                td_ev.text(`${item.n_tingpai}枚`);
++            } else {
++                td_ev.text(item.ev.toFixed(2));
++            }
++
++            const td_ting = $('<td class="ai-tingpai">');
++            for (const p of item.tingpai || []) td_ting.append(pai(p));
++            if ((item.n_tingpai ?? 0) > 0 && item.n_xiangting <= 2) {
++                td_ting.append($('<span>').text(`(${item.n_tingpai}枚)`));
++            }
++
++            const td_w = $('<td class="ai-weixian">').text(
++                item.weixian != null ? item.weixian.toFixed(1) : '-'
++            );
++
++            tr.append(td_p, td_x, td_ev, td_ting, td_w);
++            dapai_body.append(tr);
++        }
++
++        if (!dapai_info.length) {
++            dapai_body.append($('<tr><td colspan="5" style="color:#666;padding:8px">このターンは打牌分析の対象外です</td></tr>'));
++        }
++
++        const fulou_body = modal.find('.ai-fulou-body').empty();
++        for (const item of fulou_info) {
++            const tr = $('<tr>');
++            if (item.selected) tr.addClass('ai-selected');
++
++            const label = !item.m ? 'パス'
++                        : item.m.replace(/0/g,'5').match(/[mpsz](\d)\1\1\1/) ? 'カン'
++                        : item.m.replace(/0/g,'5').match(/[mpsz](\d)\1\1/)   ? 'ポン'
++                        : 'チー';
++            const td_m  = $('<td>').text(item.m ? `${label} ${item.m.replace(/0/g,'5')}` : 'パス');
++            const td_x  = $('<td>').text(item.n_xiangting == 0 ? '聴牌' : `${item.n_xiangting}向聴`);
++            const td_ev = $('<td>').text(item.ev != null ? item.ev.toFixed(2) : '-');
++
++            tr.append(td_m, td_x, td_ev);
++            fulou_body.append(tr);
++        }
++
++        if (!fulou_info.length) {
++            fulou_body.append($('<tr><td colspan="3" style="color:#666;padding:8px">副露の選択肢がありません</td></tr>'));
++        }
++
++        this._render_ai_paishu(modal, paishu);
++        if (paijia_fn) this._render_ai_paijia(modal, paijia_fn);
++
++        modal.find('.ai-tab-btn').removeClass('active');
++        modal.find('.ai-tab-pane').addClass('hide');
++        const active_tab = analysis_type === 'fulou' ? 'fulou' : 'dapai';
++        modal.find(`[data-tab="${active_tab}"]`).addClass('active');
++        modal.find(`#ai-tab-${active_tab}`).removeClass('hide');
++
++        modal.find('.ai-modal-loading').hide();
++        modal.find('.ai-modal-body').show();
++    }
++
++    _render_ai_paishu(modal, paishu) {
++        const body   = modal.find('.ai-paishu-body').empty();
++        const suits  = ['m','p','s','z'];
++        const labels = { m:'M', p:'P', s:'S', z:'Z' };
++
++        for (const s of suits) {
++            const tr  = $('<tr>').addClass(`ai-suit-${s}`);
++            const max = s === 'z' ? 7 : 9;
++            tr.append($('<th>').text(labels[s]));
++            for (let n = 1; n <= 9; n++) {
++                if (n > max) {
++                    tr.append($('<td>').text('').css('background','#1a1a1a'));
++                } else {
++                    const cnt = paishu[s][n];
++                    const td  = $('<td>').text(cnt);
++                    if (cnt === 0) td.addClass('ai-zero');
++                    tr.append(td);
++                }
++            }
++            body.append(tr);
++        }
++    }
++
++    _render_ai_paijia(modal, paijia_fn) {
++        const body   = modal.find('.ai-paijia-body').empty();
++        const suits  = ['m','p','s','z'];
++        const labels = { m:'M', p:'P', s:'S', z:'Z' };
++
++        for (const s of suits) {
++            const tr  = $('<tr>').addClass(`ai-suit-${s}`);
++            const max = s === 'z' ? 7 : 9;
++            tr.append($('<th>').text(labels[s]));
++            for (let n = 1; n <= 9; n++) {
++                if (n > max) {
++                    tr.append($('<td>').text('').css('background','#1a1a1a'));
++                } else {
++                    const score = paijia_fn(s + n);
++                    const td    = $('<td>').text(Math.round(score));
++                    if (score === 0) td.addClass('ai-zero');
++                    tr.append(td);
++                }
++            }
++            body.append(tr);
++        }
++    }
++
+     set_fragment(hash) {
+ 
+         if (hash) {
 diff --git a/node_modules/@kobalab/majiang-ui/lib/shoupai.js b/node_modules/@kobalab/majiang-ui/lib/shoupai.js
 index 6a03b9a..05524bc 100644
 --- a/node_modules/@kobalab/majiang-ui/lib/shoupai.js

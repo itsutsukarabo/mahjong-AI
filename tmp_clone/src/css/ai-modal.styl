@@ -1,0 +1,225 @@
+.controller button.ai-analyze
+  background #3a3a5c
+  border 1px solid #556
+  color #aaf
+  padding 3px 10px
+  border-radius 4px
+  cursor pointer
+  font-size 11px
+  font-family menu-font
+  vertical-align middle
+  margin-left 4px
+  &:hover
+    background #4a4a7c
+    color white
+
+.ai-modal
+  display none
+  position fixed
+  top 0
+  left 0
+  width 100%
+  height 100%
+  z-index 2000
+
+  &:not(.hide)
+    display block
+
+  .ai-modal-overlay
+    position absolute
+    top 0
+    left 0
+    width 100%
+    height 100%
+    background rgba(0,0,0,0.75)
+
+  .ai-modal-dialog
+    position absolute
+    top 50%
+    left 50%
+    transform translate(-50%, -50%)
+    background #222
+    border 1px solid #666
+    border-radius 8px
+    width 680px
+    max-width 96vw
+    max-height 90vh
+    overflow hidden
+    display flex
+    flex-direction column
+    color white
+    font-family menu-font
+    font-size 12px
+
+  .ai-modal-header
+    display flex
+    align-items center
+    justify-content space-between
+    padding 10px 16px
+    background #333
+    border-bottom 1px solid #555
+    flex-shrink 0
+
+  .ai-modal-title
+    font-size 15px
+    font-weight bold
+
+  .ai-modal-close
+    background none
+    border none
+    color #ccc
+    font-size 20px
+    cursor pointer
+    padding 0 4px
+    line-height 1
+    &:hover
+      color white
+
+  .ai-modal-loading
+    padding 16px
+    color #aaa
+    flex-shrink 0
+
+  .ai-modal-body
+    overflow-y auto
+    padding 12px
+    flex 1
+
+  .ai-tab-nav
+    display flex
+    gap 4px
+    margin-bottom 10px
+
+  .ai-tab-btn
+    background #444
+    border none
+    color #ccc
+    padding 5px 14px
+    border-radius 4px
+    cursor pointer
+    font-size 12px
+    font-family menu-font
+    &.active
+      background #666
+      color white
+    &:hover:not(.active)
+      background #555
+
+  .ai-tab-pane
+    margin-bottom 10px
+    &.hide
+      display none
+
+  .ai-candidate-table
+    border-collapse collapse
+    width 100%
+    font-size 12px
+    th, td
+      padding 4px 8px
+      text-align left
+      border-bottom 1px solid #3a3a3a
+    th
+      color #999
+      font-weight normal
+    tr.ai-selected
+      background #4a4a4a
+    .ai-cand-tile
+      white-space nowrap
+      img
+        vertical-align middle
+      span
+        margin-left 4px
+    .ai-xiangting
+      white-space nowrap
+      color #ccc
+    .ai-ev
+      text-align right
+      font-family monospace
+      white-space nowrap
+      &.ai-ev-high
+        color #f44
+      &.ai-ev-middle
+        color #fa4
+      &.ai-ev-low
+        color #ff4
+      &.ai-ev-none
+        color #777
+    .ai-tingpai
+      white-space nowrap
+      img
+        vertical-align middle
+      span
+        margin-left 4px
+        color #999
+    .ai-weixian
+      text-align right
+      font-family monospace
+      color #999
+
+  .ai-feature-panel
+    margin-top 8px
+    border-top 1px solid #3a3a3a
+    padding-top 8px
+    summary
+      cursor pointer
+      color #888
+      font-size 11px
+      padding 2px 0
+      &:hover
+        color #aaa
+    .ai-feature-inner
+      margin-top 10px
+    .ai-feature-section
+      margin-bottom 14px
+      h4
+        font-size 11px
+        color #888
+        margin 0 0 6px
+
+  .ai-paishu-table,
+  .ai-paijia-table
+    border-collapse collapse
+    font-size 11px
+    th, td
+      padding 2px 7px
+      text-align center
+      border 1px solid #3a3a3a
+      min-width 22px
+    th
+      background #2a2a2a
+      color #888
+    .ai-suit-m th
+      color #e87
+    .ai-suit-p th
+      color #88e
+    .ai-suit-s th
+      color #8e8
+    .ai-suit-z th
+      color #ee8
+    .ai-zero
+      color #555
+
+  .ai-phase2-slots
+    margin-top 10px
+    border-top 1px solid #3a3a3a
+    padding-top 10px
+    .ai-phase2-header
+      font-size 10px
+      color #555
+      margin-bottom 8px
+    .ai-slot-placeholder
+      display inline-block
+      background #1e1e1e
+      border 1px dashed #444
+      border-radius 4px
+      padding 8px 14px
+      margin 0 8px 8px 0
+      min-width 150px
+      vertical-align top
+      .ai-slot-title
+        font-size 11px
+        color #555
+        margin-bottom 4px
+      .ai-slot-body
+        font-size 10px
+        color #3a3a3a

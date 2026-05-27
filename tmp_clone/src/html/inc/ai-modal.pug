@@ -1,0 +1,72 @@
+.ai-modal.hide
+  .ai-modal-overlay
+  .ai-modal-dialog
+    .ai-modal-header
+      span.ai-modal-title AI解析
+      button.ai-modal-close(type="button") ×
+    .ai-modal-loading 計算中...
+    .ai-modal-body
+      .ai-tab-nav
+        button.ai-tab-btn.active(type="button" data-tab="dapai") 打牌分析
+        button.ai-tab-btn(type="button" data-tab="fulou") 副露分析
+      .ai-tab-pane#ai-tab-dapai
+        table.ai-candidate-table
+          thead
+            tr
+              th 候補
+              th 向聴
+              th 期待値
+              th テンパイ牌
+              th 危険度
+          tbody.ai-dapai-body
+      .ai-tab-pane.hide#ai-tab-fulou
+        table.ai-candidate-table
+          thead
+            tr
+              th 候補
+              th 向聴
+              th 期待値
+          tbody.ai-fulou-body
+      details.ai-feature-panel
+        summary 特徴量パネル
+        .ai-feature-inner
+          .ai-feature-section
+            h4 残り牌数 (paishu)
+            table.ai-paishu-table
+              thead
+                tr
+                  th
+                  th 1
+                  th 2
+                  th 3
+                  th 4
+                  th 5
+                  th 6
+                  th 7
+                  th 8
+                  th 9
+              tbody.ai-paishu-body
+          .ai-feature-section
+            h4 牌価値スコア (paijia)
+            table.ai-paijia-table
+              thead
+                tr
+                  th
+                  th 1
+                  th 2
+                  th 3
+                  th 4
+                  th 5
+                  th 6
+                  th 7
+                  th 8
+                  th 9
+              tbody.ai-paijia-body
+      .ai-phase2-slots
+        .ai-phase2-header フェーズ2スロット（学習モデル接続予定）
+        .ai-slot-placeholder
+          .ai-slot-title 他家手牌推定
+          .ai-slot-body フェーズ2で有効化
+        .ai-slot-placeholder
+          .ai-slot-title 聴牌・当たり牌確率
+          .ai-slot-body フェーズ2で有効化

@@ -10,7 +10,13 @@
     "build:js": "webpack --mode development --devtool inline-source-map",
     "build": "npm run build:html && npm run build:css && npm run build:js",
     "release": "npm run build:html && npm run build:css && webpack --mode production",
-    "clean": "rm -f dist/*.html dist/js/* dist/css/*"
+    "clean": "rm -f dist/*.html dist/js/* dist/css/*",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["**/test/**/*.test.js"]
   },
   "repository": {
     "type": "git",
@@ -27,6 +33,7 @@
     "pug": "^3.0.3"
   },
   "devDependencies": {
+    "jest": "^30.4.2",
     "patch-package": "^8.0.1",
     "pug-cli": "^1.0.0-alpha6",
     "stylus": "^0.64.0",
