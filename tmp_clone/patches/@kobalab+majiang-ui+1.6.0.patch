@@ -140,7 +140,7 @@ index b3ff1be..bc03f97 100644
          let hupai = $('.hupai', this._node.hule).empty();
          if (hule.hupai) {
 diff --git a/node_modules/@kobalab/majiang-ui/lib/paipu.js b/node_modules/@kobalab/majiang-ui/lib/paipu.js
-index 18a1888..e6d9ad0 100644
+index 18a1888..83b9d28 100644
 --- a/node_modules/@kobalab/majiang-ui/lib/paipu.js
 +++ b/node_modules/@kobalab/majiang-ui/lib/paipu.js
 @@ -8,6 +8,7 @@ const Board   = require('./board');
@@ -179,13 +179,12 @@ index 18a1888..e6d9ad0 100644
              else if (ev.key == 't') this.tenhou_dialog();
              else if (ev.key == 'a') this.sound(! this._view.sound_on);
              else if (ev.key == '-') this.speed(this._speed - 1);
-@@ -184,6 +188,17 @@ module.exports = class Paipu {
+@@ -184,6 +188,16 @@ module.exports = class Paipu {
              else if (ev.key == 'ArrowUp')   this.prev();
          });
  
 +        const modal = $('.ai-modal', this._root);
 +        $('.ai-modal-close', modal).off('click').on('click', ()=>modal.addClass('hide'));
-+        $('.ai-modal-overlay', modal).off('click').on('click', ()=>modal.addClass('hide'));
 +        $('.ai-tab-btn', modal).off('click').on('click', function() {
 +            const tab = $(this).data('tab');
 +            $('.ai-tab-btn', modal).removeClass('active');
@@ -197,7 +196,7 @@ index 18a1888..e6d9ad0 100644
          let pref = this.get_pref();
          this.sound(pref.sound_on);
          this.speed(pref.speed);
-@@ -270,6 +285,7 @@ module.exports = class Paipu {
+@@ -270,6 +284,7 @@ module.exports = class Paipu {
              else if (data.gang)     this._model.gang(data.gang);
              else if (data.gangzimo) this._model.zimo(data.gangzimo);
              else if (data.kaigang)  this._model.kaigang(data.kaigang);
@@ -205,7 +204,7 @@ index 18a1888..e6d9ad0 100644
              else if (data.hule)     this._model.hule(data.hule);
              else if (data.pingju)   this._model.pingju(data.pingju);
  
-@@ -335,6 +351,7 @@ module.exports = class Paipu {
+@@ -335,6 +350,7 @@ module.exports = class Paipu {
          else if (data.gang)     this.gang(data);
          else if (data.gangzimo) this.gangzimo(data);
          else if (data.kaigang)  this.kaigang(data);
@@ -213,7 +212,7 @@ index 18a1888..e6d9ad0 100644
          else if (data.hule)     this.hule(data);
          else if (data.pingju)   this.pingju(data);
  
-@@ -438,6 +455,11 @@ module.exports = class Paipu {
+@@ -438,6 +454,11 @@ module.exports = class Paipu {
          this._view.update(data);
      }
  
@@ -225,7 +224,7 @@ index 18a1888..e6d9ad0 100644
      hule(data) {
          if (! this._redo
              && ! this._paipu.log[this._log_idx][this._idx - 1].hule)
-@@ -736,6 +758,181 @@ module.exports = class Paipu {
+@@ -736,6 +757,191 @@ module.exports = class Paipu {
          set_data();
      }
  
@@ -234,6 +233,16 @@ index 18a1888..e6d9ad0 100644
 +        if (this._autoplay) this.autoplay();
 +
 +        const modal = $('.ai-modal', this._root);
++
++        if (!modal.hasClass('hide')) {
++            modal.addClass('hide');
++            return false;
++        }
++
++        const boardEl = this._root[0] || this._root;
++        const rect = boardEl.getBoundingClientRect();
++        modal.css({ left: rect.right + 10, top: rect.top, height: rect.height });
++
 +        modal.removeClass('hide');
 +        modal.find('.ai-modal-body').hide();
 +        modal.find('.ai-modal-loading').show().text('計算中...');
