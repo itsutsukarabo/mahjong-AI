@@ -1,0 +1,10 @@
+{
+  "name": "mahjong-ai-phase2",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "parse":   "node scripts/parse_paipu.js",
+    "extract": "node scripts/extract_features.js"
+  },
+  "dependencies": {}
+}

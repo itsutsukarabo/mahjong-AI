@@ -108,6 +108,10 @@ async function download_all(url_list) {
 牌譜 → ターンごとの局面状態 → その時点での他家手牌 → 正解ラベル
 ```
 
+> **round_fenpei について**: 各レコードに「その局の得失点結果」(`round_fenpei`) を付与する。
+> これにより、任意ターンの局面状態と「最終的にその局でどれだけ点数が動いたか」を紐付けられ、
+> 局単位の短期報酬ラベルとしても活用できる。
+
 ### 特徴量設計
 
 #### 第一原則
@@ -287,6 +291,18 @@ models/
 
 1. 天鳳牌譜ダウンロードスクリプトを作成する（20分間隔・単一セッション・圧縮対応）
 2. 牌譜XMLをパースして局面状態の時系列に変換するモジュールを作成する
+   出力フォーマット: NDJSON（1行=1レコード、ツモ後の打牌決定点のみ）
+   各レコードのフィールド:
+   - `paipu_id`, `round_idx`, `event_idx`, `event_type`（識別）
+   - `zhuangfeng`, `jushu`, `changbang`, `lizhibang`, `player_ids`（局コンテキスト）
+   - `l`, `player_id`, `drawn_tile`（意思決定者）
+   - `hands_l`（全員の真の手牌、局内ポジション順）
+   - `discards_l`, `melds_l`, `riichi_l`（公開情報、局内ポジション順）
+   - `scores`（点数、player_id順）
+   - `remaining`（山残り枚数）
+   - `action`（実際に打牌した牌、正解ラベル）
+   - `round_fenpei`（**その局の得失点結果**、player_id順）← 追加
+   - `final_points`, `final_ranks`（対局終了時の着順点・着順、player_id順）
 3. 各モデル用の特徴量ベクトルと正解ラベルを生成するモジュールを作成する
 4. 学習用・検証用・テスト用にデータを分割する
 
