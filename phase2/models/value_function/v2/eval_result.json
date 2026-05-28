@@ -1,0 +1,20 @@
+{
+  "test_loss": 0.19513739142401218,
+  "test_mae_round_fenpei": 2956.724461256968,
+  "test_mae_final_point": 28.839444686463505,
+  "config": {
+    "input_dim": 67,
+    "hidden_dims": [
+      128,
+      128,
+      64
+    ],
+    "dropout": 0.3,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch_size": 512,
+    "epochs": 50,
+    "early_stop_patience": 5,
+    "score_scale": 10000.0
+  }
+}
