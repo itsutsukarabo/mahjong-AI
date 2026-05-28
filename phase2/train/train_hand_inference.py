@@ -1,11 +1,9 @@
 """
-手牌類推モデル v3: Per-tile アーキテクチャ + Ordinal Soft Labels
+手牌類推モデル v4: Flat MLP (容量拡大) + BatchNorm + AdamW
 
-入力 (777次元):
-  Per-tile (34タイル × 22次元):
-    tile_identity(14) + self_count(1) + target_discard(1) + visible(1) + neighbor_vis(4) + suit_disc(1)
-  グローバル (29次元):
-    score(11) + game(9) + riichi(1) + target_meld_type(4) + self_meld_type(4)
+入力 (219次元):
+  target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
+  self_discard(44) + self_meld(38) + visible_counts(34)
 
 出力:
   他家の手牌確率 (34牌 × 5クラス: 0/1/2/3/4枚)
@@ -25,36 +23,20 @@ from torch.utils.data import Dataset, DataLoader
 # ---- 設定 ----
 
 DATA_DIR  = Path(__file__).parent.parent / "data" / "features"
-MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v3"
+MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v4"
 
 CONFIG = {
-    "n_pai":          34,
-    "per_tile_dim":   22,
-    "global_dim":     29,
-    "input_dim":      34 * 22 + 29,   # 777
-    "shared_hidden":  [128, 64],
-    "n_count_cls":    5,
-    "dropout":        0.2,
-    "lr":             1e-3,
-    "weight_decay":   1e-4,
-    "batch_size":     512,
-    "epochs":         60,
+    "input_dim":    219,
+    "hidden_dims":  [512, 512, 256, 128],
+    "n_pai":        34,
+    "n_count_cls":  5,
+    "dropout":      0.3,
+    "lr":           1e-3,
+    "weight_decay": 1e-4,
+    "batch_size":   512,
+    "epochs":       60,
     "early_stop_patience": 7,
-    "ordinal_sigma":  0.7,
 }
-
-
-# ---- Ordinal Soft Labels ----
-
-def make_soft_label_matrix(n_classes, sigma):
-    """正解クラスから離れるほど確率が下がる soft label 行列を生成"""
-    mat = torch.zeros(n_classes, n_classes)
-    for c in range(n_classes):
-        for j in range(n_classes):
-            d = abs(c - j)
-            mat[c, j] = math.exp(-d * d / (2 * sigma * sigma))
-        mat[c] /= mat[c].sum()
-    return mat
 
 
 # ---- データセット ----
@@ -75,54 +57,37 @@ class HandInferenceDataset(Dataset):
         return self.features[idx], self.labels[idx]
 
 
-# ---- モデル (Per-tile Shared MLP) ----
+# ---- モデル (Flat MLP) ----
 
-class PerTileHandInferenceModel(nn.Module):
-    def __init__(self, per_tile_dim, global_dim, shared_hidden, n_pai, n_count_cls, dropout):
+class HandInferenceModel(nn.Module):
+    def __init__(self, input_dim, hidden_dims, n_pai, n_count_cls, dropout):
         super().__init__()
-        tile_feat_dim = per_tile_dim + global_dim  # 22 + 29 = 51
         layers = []
-        prev = tile_feat_dim
-        for h in shared_hidden:
+        prev = input_dim
+        for h in hidden_dims:
             layers += [nn.Linear(prev, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Dropout(dropout)]
             prev = h
-        self.shared_mlp = nn.Sequential(*layers)
-        self.head = nn.Linear(prev, n_count_cls)
+        self.backbone = nn.Sequential(*layers)
+        self.head = nn.Linear(prev, n_pai * n_count_cls)
         self.n_pai       = n_pai
-        self.per_tile_dim = per_tile_dim
-        self.global_dim  = global_dim
         self.n_count_cls = n_count_cls
 
     def forward(self, x):
-        # x: (B, 34*per_tile_dim + global_dim) = (B, 777)
-        B = x.shape[0]
-        per_tile_part = x[:, : self.n_pai * self.per_tile_dim]          # (B, 748)
-        global_part   = x[:, self.n_pai * self.per_tile_dim :]          # (B, 29)
-
-        per_tile  = per_tile_part.reshape(B, self.n_pai, self.per_tile_dim)  # (B, 34, 22)
-        global_ex = global_part.unsqueeze(1).expand(-1, self.n_pai, -1)      # (B, 34, 29)
-
-        x_tile = torch.cat([per_tile, global_ex], dim=-1)               # (B, 34, 51)
-        x_flat = x_tile.reshape(-1, self.per_tile_dim + self.global_dim) # (B*34, 51)
-
-        h   = self.shared_mlp(x_flat)                                    # (B*34, last_h)
-        out = self.head(h)                                                # (B*34, 5)
-        return out.reshape(B, self.n_pai, self.n_count_cls)              # (B, 34, 5)
+        h = self.backbone(x)
+        out = self.head(h)
+        return out.reshape(-1, self.n_pai, self.n_count_cls)
 
 
 # ---- 学習・評価 ----
 
-def train_epoch(model, loader, optimizer, soft_matrix, device):
+def train_epoch(model, loader, optimizer, device):
     model.train()
     total_loss = 0.0
     for features, labels in loader:
         features, labels = features.to(device), labels.to(device)
         optimizer.zero_grad()
-        logits = model(features)                             # (B, 34, 5)
-        log_probs = F.log_softmax(logits, dim=-1)           # (B, 34, 5)
-        soft_tgt  = soft_matrix[labels.view(-1)]            # (B*34, 5)
-        log_flat  = log_probs.view(-1, model.n_count_cls)   # (B*34, 5)
-        loss = F.kl_div(log_flat, soft_tgt, reduction='batchmean')
+        logits = model(features)                              # (B, 34, 5)
+        loss = F.cross_entropy(logits.reshape(-1, model.n_count_cls), labels.reshape(-1))
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * len(features)
@@ -130,7 +95,7 @@ def train_epoch(model, loader, optimizer, soft_matrix, device):
 
 
 @torch.no_grad()
-def eval_epoch(model, loader, soft_matrix, device):
+def eval_epoch(model, loader, device):
     model.eval()
     total_loss = 0.0
     correct = 0
@@ -138,16 +103,12 @@ def eval_epoch(model, loader, soft_matrix, device):
     for features, labels in loader:
         features, labels = features.to(device), labels.to(device)
         logits = model(features)
-        log_probs = F.log_softmax(logits, dim=-1)
-        soft_tgt  = soft_matrix[labels.view(-1)]
-        log_flat  = log_probs.view(-1, model.n_count_cls)
-        loss = F.kl_div(log_flat, soft_tgt, reduction='batchmean')
+        loss = F.cross_entropy(logits.reshape(-1, model.n_count_cls), labels.reshape(-1))
         total_loss += loss.item() * len(features)
         preds = logits.argmax(dim=-1)
         correct += (preds == labels).sum().item()
         total   += labels.numel()
-    acc = correct / total
-    return total_loss / len(loader.dataset), acc
+    return total_loss / len(loader.dataset), correct / total
 
 
 def main():
@@ -163,7 +124,6 @@ def main():
         all_data = [json.loads(line) for line in f if line.strip()]
     print(f"総サンプル数: {len(all_data)}")
 
-    # 次元数チェック
     sample_dim = len(all_data[0]["features"])
     if sample_dim != CONFIG["input_dim"]:
         print(f"次元数不一致: expected {CONFIG['input_dim']}, got {sample_dim}")
@@ -184,18 +144,12 @@ def main():
     val_loader   = DataLoader(HandInferenceDataset(val_data),   batch_size=CONFIG["batch_size"], shuffle=False, num_workers=0)
     test_loader  = DataLoader(HandInferenceDataset(test_data),  batch_size=CONFIG["batch_size"], shuffle=False, num_workers=0)
 
-    soft_matrix = make_soft_label_matrix(CONFIG["n_count_cls"], CONFIG["ordinal_sigma"]).to(device)
-    print("Ordinal soft label matrix:")
-    for i, row in enumerate(soft_matrix):
-        print(f"  count={i}: {[f'{v:.3f}' for v in row.tolist()]}")
-
-    model = PerTileHandInferenceModel(
-        per_tile_dim  = CONFIG["per_tile_dim"],
-        global_dim    = CONFIG["global_dim"],
-        shared_hidden = CONFIG["shared_hidden"],
-        n_pai         = CONFIG["n_pai"],
-        n_count_cls   = CONFIG["n_count_cls"],
-        dropout       = CONFIG["dropout"],
+    model = HandInferenceModel(
+        input_dim   = CONFIG["input_dim"],
+        hidden_dims = CONFIG["hidden_dims"],
+        n_pai       = CONFIG["n_pai"],
+        n_count_cls = CONFIG["n_count_cls"],
+        dropout     = CONFIG["dropout"],
     ).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=CONFIG["lr"], weight_decay=CONFIG["weight_decay"])
@@ -206,8 +160,8 @@ def main():
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
     for epoch in range(1, CONFIG["epochs"] + 1):
-        train_loss = train_epoch(model, train_loader, optimizer, soft_matrix, device)
-        val_loss, val_acc = eval_epoch(model, val_loader, soft_matrix, device)
+        train_loss = train_epoch(model, train_loader, optimizer, device)
+        val_loss, val_acc = eval_epoch(model, val_loader, device)
         scheduler.step(val_loss)
         print(f"epoch {epoch:3d}  train_loss={train_loss:.4f}  val_loss={val_loss:.4f}  val_acc={val_acc:.4f}")
 
@@ -222,7 +176,7 @@ def main():
                 break
 
     model.load_state_dict(torch.load(MODEL_DIR / "model.pt", map_location=device))
-    test_loss, test_acc = eval_epoch(model, test_loader, soft_matrix, device)
+    test_loss, test_acc = eval_epoch(model, test_loader, device)
     print(f"test_loss={test_loss:.4f}  test_acc={test_acc:.4f}")
 
     eval_result = {"test_loss": test_loss, "test_acc": test_acc, "config": CONFIG}

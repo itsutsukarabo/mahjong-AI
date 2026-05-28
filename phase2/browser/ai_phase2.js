@@ -296,45 +296,17 @@
     }
 
     function make_hi_features(state, target_l) {
-        // Per-tile アーキテクチャ v3: 34×22 + 29 = 777次元
-        const global_feats = [
+        // v2: 219次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+self_discard(44)+self_meld(38)+visible_counts(34)
+        return new Float32Array([
+            ...discard_features(state.discards_l[target_l]),
+            ...meld_features(state.melds_l[target_l]),
+            state.riichi_l[target_l] ? 1 : 0,
             ...score_features(state),
             ...game_state_features(state),
-            state.riichi_l[target_l] ? 1 : 0,
-            ...meld_type_single(state.melds_l[target_l]),
-            ...meld_type_single(state.melds_l[state.l]),
-        ];  // 29次元
-
-        const hand_vec   = encode_hand(state.hands_l[state.l]);
-        const vis_counts = visible_counts_vec(state);
-
-        const target_disc_vec = new Array(N_PAI).fill(0);
-        for (const p of state.discards_l[target_l]) {
-            const pi = pai_to_idx(p);
-            if (pi >= 0) target_disc_vec[pi]++;
-        }
-
-        const suit_disc_target = [0, 0, 0, 0];
-        for (const p of state.discards_l[target_l]) {
-            const base = p.replace(/[_*+=\-]/g, '');
-            const s = 'mpsz'.indexOf(base[0]);
-            if (s >= 0) suit_disc_target[s]++;
-        }
-
-        const per_tile_flat = [];
-        for (let i = 0; i < N_PAI; i++) {
-            const suit_idx = i < 9 ? 0 : i < 18 ? 1 : i < 27 ? 2 : 3;
-            per_tile_flat.push(
-                ...make_tile_identity(i),
-                hand_vec[i] / 4,
-                target_disc_vec[i] / 4,
-                vis_counts[i],
-                ...get_neighbor_visible(i, vis_counts),
-                suit_disc_target[suit_idx] / 18,
-            );
-        }
-
-        return new Float32Array([...per_tile_flat, ...global_feats]);
+            ...discard_features(state.discards_l[state.l]),
+            ...meld_features(state.melds_l[state.l]),
+            ...visible_counts_vec(state),
+        ]);
     }
 
     /* ---- ユーティリティ ---- */
@@ -423,7 +395,7 @@
     async function load_sessions() {
         const s = {};
         const models = [
-            ['hand_inference', MODEL_BASE + 'hand_inference/v2/model.onnx'],
+            ['hand_inference', MODEL_BASE + 'hand_inference/v4/model.onnx'],
             ['behavior_clone', MODEL_BASE + 'behavior_clone/v2/model.onnx'],
             ['value_function', MODEL_BASE + 'value_function/v2/model.onnx'],
         ];

@@ -1,12 +1,13 @@
-"""保存済み model.pt を ONNX にエクスポートする"""
+"""保存済み model.pt を ONNX にエクスポートする (v4用)"""
 import json
 import torch
 import torch.nn as nn
 from pathlib import Path
 
-MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v1"
+MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v4"
 
 config = json.loads((MODEL_DIR / "config.json").read_text())
+
 
 class HandInferenceModel(nn.Module):
     def __init__(self, input_dim, hidden_dims, n_pai, n_count_cls, dropout):
@@ -14,16 +15,17 @@ class HandInferenceModel(nn.Module):
         layers = []
         prev = input_dim
         for h in hidden_dims:
-            layers += [nn.Linear(prev, h), nn.ReLU(), nn.Dropout(dropout)]
+            layers += [nn.Linear(prev, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Dropout(dropout)]
             prev = h
         self.backbone = nn.Sequential(*layers)
         self.head = nn.Linear(prev, n_pai * n_count_cls)
-        self.n_pai = n_pai
+        self.n_pai       = n_pai
         self.n_count_cls = n_count_cls
 
     def forward(self, x):
         h = self.backbone(x)
-        return self.head(h).view(-1, self.n_pai, self.n_count_cls)
+        return self.head(h).reshape(-1, self.n_pai, self.n_count_cls)
+
 
 model = HandInferenceModel(
     input_dim   = config["input_dim"],
