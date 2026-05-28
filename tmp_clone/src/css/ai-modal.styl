@@ -243,29 +243,63 @@
           color #e66
 
     // 他家手牌推定
-    .ai-hi-body
-      .ai-hi-row
-        display flex
-        align-items center
-        flex-wrap wrap
-        gap 3px
-        margin-bottom 4px
-        min-height 24px
-      .ai-hi-seat
+    .ai-hi-player-section
+      margin-bottom 12px
+      .ai-hi-player-label
         font-size 11px
         color #888
-        min-width 28px
-        flex-shrink 0
-      .ai-hi-cell
-        display inline-flex
-        align-items flex-end
-        img
-          vertical-align bottom
-        sub
-          font-size 9px
-          color #aaa
-          margin-left 1px
-          font-family monospace
+        margin-bottom 4px
+
+    .ai-hi-table
+      border-collapse collapse
+      font-size 8px
+      th, td
+        padding 1px 2px
+        border 1px solid #3a3a3a
+        min-width 42px
+        vertical-align top
+        text-align center
+      th
+        background #2a2a2a
+        color #888
+        min-width auto
+        padding 2px 5px
+        white-space nowrap
+      .ai-suit-m th
+        color #e87
+      .ai-suit-p th
+        color #88e
+      .ai-suit-s th
+        color #8e8
+      .ai-suit-z th
+        color #ee8
+
+    .ai-hi-probs
+      line-height 1.5
+      font-family monospace
+      text-align left
+      .ai-hi-p0
+        color #555
+      .ai-hi-p1
+        color #aaa
+      .ai-hi-p2
+        color #fa4
+      .ai-hi-p3
+        color #f84
+      .ai-hi-p4
+        color #f44
+
+    .ai-hi-aka-section
+      margin-top 4px
+      font-size 10px
+      .ai-hi-aka-label
+        color #888
+      .ai-hi-aka-tile
+        margin-right 8px
+        font-family monospace
+        color #aaa
+      .ai-hi-aka-na
+        color #555
 
     .ai-p2-na
       font-size 11px

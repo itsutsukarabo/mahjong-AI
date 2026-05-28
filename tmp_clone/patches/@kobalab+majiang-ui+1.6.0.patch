@@ -140,7 +140,7 @@ index b3ff1be..bc03f97 100644
          let hupai = $('.hupai', this._node.hule).empty();
          if (hule.hupai) {
 diff --git a/node_modules/@kobalab/majiang-ui/lib/paipu.js b/node_modules/@kobalab/majiang-ui/lib/paipu.js
-index 18a1888..cfb8354 100644
+index 18a1888..9e96263 100644
 --- a/node_modules/@kobalab/majiang-ui/lib/paipu.js
 +++ b/node_modules/@kobalab/majiang-ui/lib/paipu.js
 @@ -8,6 +8,7 @@ const Board   = require('./board');
@@ -224,7 +224,7 @@ index 18a1888..cfb8354 100644
      hule(data) {
          if (! this._redo
              && ! this._paipu.log[this._log_idx][this._idx - 1].hule)
-@@ -736,6 +757,272 @@ module.exports = class Paipu {
+@@ -736,6 +757,309 @@ module.exports = class Paipu {
          set_data();
      }
  
@@ -428,20 +428,57 @@ index 18a1888..cfb8354 100644
 +        // 他家手牌推定
 +        const hi_body = modal.find('.ai-hi-body').empty();
 +        if (phase2 && phase2.hand_inference) {
++            const SUITS_HI = [
++                { key: 'm', label: 'M', offset:  0, max: 9 },
++                { key: 'p', label: 'P', offset:  9, max: 9 },
++                { key: 's', label: 'S', offset: 18, max: 9 },
++                { key: 'z', label: 'Z', offset: 27, max: 7 },
++            ];
 +            for (const p of phase2.hand_inference.players) {
-+                const row = $('<div class="ai-hi-row">');
-+                row.append($('<span class="ai-hi-seat">').text(p.seat_name + ':'));
-+                if (p.top.length === 0) {
-+                    row.append($('<span class="ai-p2-na">').text('推定不可'));
-+                } else {
-+                    for (const t of p.top) {
-+                        const cell = $('<span class="ai-hi-cell">');
-+                        cell.append(pai(t.tile));
-+                        cell.append($('<sub>').text(t.exp.toFixed(1)));
-+                        row.append(cell);
++                const section = $('<div class="ai-hi-player-section">');
++                section.append($('<div class="ai-hi-player-label">').text(p.seat_name + ':'));
++
++                const table = $('<table class="ai-hi-table">');
++                const thead = $('<thead><tr>');
++                $('tr', thead).append($('<th>'));
++                for (let n = 1; n <= 9; n++) $('tr', thead).append($('<th>').text(n));
++                table.append(thead);
++
++                const tbody = $('<tbody>');
++                for (const suit of SUITS_HI) {
++                    const tr = $('<tr>').addClass('ai-suit-' + suit.key);
++                    tr.append($('<th>').text(suit.label));
++                    for (let n = 1; n <= 9; n++) {
++                        const td = $('<td>');
++                        if (n > suit.max) {
++                            td.css('background', '#1a1a1a');
++                        } else {
++                            const probs = p.probs_per_tile[suit.offset + (n - 1)];
++                            const wrap  = $('<div class="ai-hi-probs">');
++                            for (let cnt = 0; cnt < 5; cnt++) {
++                                const pct = Math.round(probs[cnt] * 100);
++                                wrap.append($('<div>').addClass('ai-hi-p' + cnt).text(cnt + '枚:' + pct + '%'));
++                            }
++                            td.append(wrap);
++                        }
++                        tr.append(td);
 +                    }
++                    tbody.append(tr);
 +                }
-+                hi_body.append(row);
++                table.append(tbody);
++                section.append(table);
++
++                // 赤牌セクション (現モデル未対応 — 将来モデル対応時に aka.m0 等へ確率配列を格納)
++                const aka_sec = $('<div class="ai-hi-aka-section">');
++                aka_sec.append($('<span class="ai-hi-aka-label">').text('赤牌: '));
++                for (const k of ['m0', 'p0', 's0']) {
++                    const v = p.aka ? p.aka[k] : null;
++                    const cls = 'ai-hi-aka-tile' + (v === null ? ' ai-hi-aka-na' : '');
++                    const text = v !== null ? k + ':' + Math.round(v * 100) + '%' : k + ': -';
++                    aka_sec.append($('<span>').addClass(cls).text(text));
++                }
++                section.append(aka_sec);
++                hi_body.append(section);
 +            }
 +        } else {
 +            hi_body.html('<span class="ai-p2-na">-</span>');

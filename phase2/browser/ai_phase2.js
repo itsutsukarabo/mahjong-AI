@@ -276,18 +276,16 @@
                     const out      = await run_session(sessions.hand_inference, make_hi_features(state, target_l));
                     // out['logits'].data は Float32Array, shape [1, 34, 5] → flat length 170
                     const flat     = out['logits'].data;
-                    const expected = new Array(N_PAI);
+                    const probs_per_tile = [];
                     for (let tile = 0; tile < N_PAI; tile++) {
-                        const ps = softmax([flat[tile*5], flat[tile*5+1], flat[tile*5+2], flat[tile*5+3], flat[tile*5+4]]);
-                        expected[tile] = ps[1] + ps[2]*2 + ps[3]*3 + ps[4]*4;
+                        probs_per_tile.push(softmax([flat[tile*5], flat[tile*5+1], flat[tile*5+2], flat[tile*5+3], flat[tile*5+4]]));
                     }
-                    // 期待保有枚数が高い順に上位タイルを抽出
-                    const top = expected
-                        .map((e, i) => ({ tile: PAI_NAMES[i], exp: e }))
-                        .filter(x => x.exp >= 0.25)
-                        .sort((a, b) => b.exp - a.exp)
-                        .slice(0, 6);
-                    players.push({ l: target_l, rel, seat_name: SEAT_NAMES[rel - 1], expected, top });
+                    players.push({
+                        l: target_l, rel, seat_name: SEAT_NAMES[rel - 1],
+                        probs_per_tile,
+                        // 赤牌は現モデル未対応 (m0/p0/s0 は m5/p5/s5 に統合)。将来モデル対応時にここへ確率を格納する。
+                        aka: { m0: null, p0: null, s0: null },
+                    });
                 }
                 result.hand_inference = { players };
             } catch(e) { console.warn('AI Phase2: hand_inference error', e); }
