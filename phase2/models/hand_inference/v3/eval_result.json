@@ -1,0 +1,22 @@
+{
+  "test_loss": 0.19232815840539466,
+  "test_acc": 0.7322990839505467,
+  "config": {
+    "n_pai": 34,
+    "per_tile_dim": 22,
+    "global_dim": 29,
+    "input_dim": 777,
+    "shared_hidden": [
+      128,
+      64
+    ],
+    "n_count_cls": 5,
+    "dropout": 0.2,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch_size": 512,
+    "epochs": 60,
+    "early_stop_patience": 7,
+    "ordinal_sigma": 0.7
+  }
+}
