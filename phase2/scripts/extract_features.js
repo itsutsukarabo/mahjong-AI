@@ -214,6 +214,57 @@ function encode_hand(hand_str) {
     return vec;
 }
 
+// ---- 追加特徴量 ----
+
+/**
+ * 全プレイヤーの捨て牌・副露 + viewer自身の手牌から「見え牌枚数」を計算（34次元、/4 正規化）
+ * 相手が持てない枚数の上限を示す情報として手牌推定に使用する
+ */
+function visible_counts_vec(rec, viewer_l) {
+    const counts = new Array(N_PAI).fill(0);
+    for (let l = 0; l < 4; l++) {
+        for (const p of rec.discards_l[l]) {
+            const pi = pai_to_idx(p);
+            if (pi >= 0) counts[pi]++;
+        }
+        for (const m of rec.melds_l[l]) {
+            if (!m) continue;
+            const clean = m.replace(/[+=\-]/g, '');
+            const s = clean[0];
+            for (let i = 1; i < clean.length; i++) {
+                const n = parseInt(clean[i]);
+                if (isNaN(n)) continue;
+                const real_n = n === 0 ? 5 : n;
+                const pi = pai_to_idx(`${s}${real_n}`);
+                if (pi >= 0) counts[pi]++;
+            }
+        }
+    }
+    const hand = encode_hand(rec.hands_l[viewer_l]);
+    for (let i = 0; i < N_PAI; i++) counts[i] += hand[i];
+    return counts.map(c => c / 4);
+}
+
+/**
+ * viewer_l 以外の3プレイヤーの副露タイプ（チー/ポン/カン/有無）を返す（12次元）
+ * 相対順: (l+1)%4, (l+2)%4, (l+3)%4 の順で各4次元
+ */
+function others_meld_type_features(rec) {
+    const vec = [];
+    for (let rel = 1; rel <= 3; rel++) {
+        const l = (rec.l + rel) % 4;
+        let n_chi = 0, n_pon = 0, n_kan = 0;
+        for (const m of rec.melds_l[l]) {
+            if (!m) continue;
+            if (m.match(/^[mpsz]\d{3}[\+\=\-]$/))  n_chi++;
+            else if (m.match(/^[mpsz]\d{3}[\+\=\-]\d$/)) n_pon++;
+            else if (m.match(/^[mpsz]\d{4}/))             n_kan++;
+        }
+        vec.push(n_chi, n_pon, n_kan, (n_chi + n_pon + n_kan > 0) ? 1 : 0);
+    }
+    return vec;
+}
+
 // ---- 3モデル用の特徴量・ラベル生成 ----
 
 /**
@@ -227,17 +278,13 @@ function make_hand_inference_sample(rec, target_l) {
         riichi_l_val(rec.riichi_l[target_l]),            // 1
         ...score_features(rec),                          // 11
         ...game_state_features(rec),                     // 9
-        // 自分の手牌（公開情報として意思決定者の捨て牌・副露のみ）
         ...discard_features(rec.discards_l[rec.l]),      // 44
         ...meld_features(rec.melds_l[rec.l]),            // 38
+        ...visible_counts_vec(rec, rec.l),               // 34
     ];
-    // 合計: 44+38+1+11+9+44+38 = 185次元
+    // 合計: 44+38+1+11+9+44+38+34 = 219次元
 
-    // ラベル: 対象プレイヤーの真の手牌（ツモ牌を除く公開前手牌）
     const hand_vec = encode_hand(rec.hands_l[target_l]);
-
-    // 注意: target_lのhands_lはツモ直後の状態を含む可能性がある（target_l == rec.l以外）
-    // 実際の学習時は target_l != rec.l のサンプルのみ使用する
 
     return { features, label_hand: hand_vec, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
 }
@@ -246,25 +293,28 @@ function riichi_l_val(v) { return v ? 1 : 0; }
 
 /**
  * 行動クローンモデル用
- * 意思決定者 l の特徴量 + ラベル（打牌した牌のインデックス）
+ * 意思決定者 l の特徴量 + ラベル（打牌した牌のインデックス + 有効アクションマスク）
  */
 function make_behavior_clone_sample(rec) {
-    // 自分の手牌（意思決定者視点 = ツモ直後の真の手牌）
     const hand_vec = encode_hand(rec.hands_l[rec.l]);
 
     const features = [
-        ...hand_vec,                                     // 34
-        ...discard_features(rec.discards_l[rec.l]),     // 44
-        ...meld_features(rec.melds_l[rec.l]),            // 38
-        ...score_features(rec),                          // 11
-        ...game_state_features(rec),                     // 9
+        ...hand_vec,                                                    // 34
+        ...discard_features(rec.discards_l[rec.l]),                    // 44
+        ...meld_features(rec.melds_l[rec.l]),                          // 38
+        ...score_features(rec),                                         // 11
+        ...game_state_features(rec),                                    // 9
+        ...discard_features(rec.discards_l[(rec.l + 1) % 4]),          // 44
+        ...discard_features(rec.discards_l[(rec.l + 2) % 4]),          // 44
+        ...discard_features(rec.discards_l[(rec.l + 3) % 4]),          // 44
     ];
-    // 合計: 34+44+38+11+9 = 136次元
+    // 合計: 34+44+38+11+9+44+44+44 = 268次元
 
-    // ラベル: 打牌した牌インデックス
     const action_idx = pai_to_idx(rec.action.replace(/[_*]/g, ''));
+    // 手牌にある牌のみ打牌可能 → 学習時のマスクとして使用
+    const label_mask = hand_vec.map(c => c > 0 ? 1 : 0);
 
-    return { features, label_action: action_idx, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx } };
+    return { features, label_action: action_idx, label_mask, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx } };
 }
 
 /**
@@ -278,13 +328,14 @@ function make_value_sample(rec) {
         ...hand_vec,                                     // 34
         ...score_features(rec),                          // 11
         ...game_state_features(rec),                     // 9
-        rec.remaining / 70,                              // 1: 残り枚数
+        rec.remaining / 70,                              // 1
+        ...others_meld_type_features(rec),               // 12
     ];
-    // 合計: 34+11+9+1 = 55次元
+    // 合計: 34+11+9+1+12 = 67次元
 
     const player_id     = rec.player_ids[rec.l];
-    const round_fenpei  = rec.round_fenpei[player_id];  // この局の得失点
-    const final_point   = rec.final_points[player_id];  // 対局終了時の着順点
+    const round_fenpei  = rec.round_fenpei[player_id];
+    const final_point   = rec.final_points[player_id];
 
     return { features, label_round_fenpei: round_fenpei, label_final_point: final_point, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx } };
 }

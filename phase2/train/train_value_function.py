@@ -1,11 +1,12 @@
 """
 価値関数モデル: 局面から局の得失点と最終着順点を予測する
 
-入力 (55次元):
+入力 (67次元):
   自手牌 (34)
   点数状況 (11)
   ゲーム状況 (9)
   残り牌数 (1)
+  他家3人の副露タイプ (12)
 
 出力:
   label_round_fenpei: この局の得失点 (回帰)
@@ -25,18 +26,18 @@ from torch.utils.data import Dataset, DataLoader
 # ---- 設定 ----
 
 DATA_DIR  = Path(__file__).parent.parent / "data" / "features"
-MODEL_DIR = Path(__file__).parent.parent / "models" / "value_function" / "v1"
+MODEL_DIR = Path(__file__).parent.parent / "models" / "value_function" / "v2"
 
 CONFIG = {
-    "input_dim":   55,
-    "hidden_dims": [128, 128, 64],
-    "dropout":     0.3,
-    "lr":          1e-3,
-    "batch_size":  512,
-    "epochs":      50,
+    "input_dim":    67,
+    "hidden_dims":  [128, 128, 64],
+    "dropout":      0.3,
+    "lr":           1e-3,
+    "weight_decay": 1e-4,
+    "batch_size":   512,
+    "epochs":       50,
     "early_stop_patience": 5,
-    # 点数を10000点単位で正規化
-    "score_scale": 10000.0,
+    "score_scale":  10000.0,
 }
 
 
@@ -47,7 +48,6 @@ class ValueFunctionDataset(Dataset):
         self.features = torch.tensor(
             [s["features"] for s in data], dtype=torch.float32
         )
-        # 回帰ラベル: 点数を正規化
         self.label_round = torch.tensor(
             [s["label_round_fenpei"] / score_scale for s in data], dtype=torch.float32
         )
@@ -70,7 +70,7 @@ class ValueFunctionModel(nn.Module):
         layers = []
         prev = input_dim
         for h in hidden_dims:
-            layers += [nn.Linear(prev, h), nn.ReLU(), nn.Dropout(dropout)]
+            layers += [nn.Linear(prev, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Dropout(dropout)]
             prev = h
         self.backbone = nn.Sequential(*layers)
         self.head_round = nn.Linear(prev, 1)
@@ -152,7 +152,7 @@ def main():
         dropout     = CONFIG["dropout"],
     ).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG["lr"])
+    optimizer = torch.optim.AdamW(model.parameters(), lr=CONFIG["lr"], weight_decay=CONFIG["weight_decay"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2)
 
     best_val_loss = math.inf

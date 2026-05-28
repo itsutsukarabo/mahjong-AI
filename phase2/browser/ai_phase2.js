@@ -182,31 +182,79 @@
         };
     }
 
+    /* ---- 追加特徴量 ---- */
+
+    function visible_counts_vec(state) {
+        // 全プレイヤーの捨て牌・副露 + viewer自身の手牌から見え牌枚数を計算（34次元、/4正規化）
+        const counts = new Array(N_PAI).fill(0);
+        for (let l = 0; l < 4; l++) {
+            for (const p of state.discards_l[l]) {
+                const pi = pai_to_idx(p);
+                if (pi >= 0) counts[pi]++;
+            }
+            for (const m of state.melds_l[l]) {
+                if (!m) continue;
+                const clean = m.replace(/[+=\-]/g, '');
+                const s = clean[0];
+                for (let i = 1; i < clean.length; i++) {
+                    const n = parseInt(clean[i]);
+                    if (isNaN(n)) continue;
+                    const pi = pai_to_idx(s + (n === 0 ? 5 : n));
+                    if (pi >= 0) counts[pi]++;
+                }
+            }
+        }
+        const hand = encode_hand(state.hands_l[state.l]);
+        for (let i = 0; i < N_PAI; i++) counts[i] += hand[i];
+        return counts.map(c => c / 4);
+    }
+
+    function meld_type_features_3players(state) {
+        // viewer以外の3プレイヤーの副露タイプ: (n_chi, n_pon, n_kan, has_meld) × 3 = 12次元
+        const vec = [];
+        for (let rel = 1; rel <= 3; rel++) {
+            const l = (state.l + rel) % 4;
+            let n_chi = 0, n_pon = 0, n_kan = 0;
+            for (const m of state.melds_l[l]) {
+                if (!m) continue;
+                if      (m.match(/^[mpsz]\d{3}[\+\=\-]$/))  n_chi++;
+                else if (m.match(/^[mpsz]\d{3}[\+\=\-]\d$/)) n_pon++;
+                else if (m.match(/^[mpsz]\d{4}/))             n_kan++;
+            }
+            vec.push(n_chi, n_pon, n_kan, (n_chi + n_pon + n_kan > 0) ? 1 : 0);
+        }
+        return vec;
+    }
+
     /* ---- 各モデル用特徴量ベクトル生成 ---- */
 
     function make_bc_features(state) {
-        // 行動クローン: 136次元 = hand(34) + discard(44) + meld(38) + score(11) + game(9)
+        // 行動クローン: 268次元 = hand(34) + discard(44) + meld(38) + score(11) + game(9) + others_discard(44×3)
         return new Float32Array([
             ...encode_hand(state.hands_l[state.l]),
             ...discard_features(state.discards_l[state.l]),
             ...meld_features(state.melds_l[state.l]),
             ...score_features(state),
             ...game_state_features(state),
+            ...discard_features(state.discards_l[(state.l + 1) % 4]),
+            ...discard_features(state.discards_l[(state.l + 2) % 4]),
+            ...discard_features(state.discards_l[(state.l + 3) % 4]),
         ]);
     }
 
     function make_vf_features(state) {
-        // 価値関数: 55次元 = hand(34) + score(11) + game(9) + remaining(1)
+        // 価値関数: 67次元 = hand(34) + score(11) + game(9) + remaining(1) + others_meld_type(12)
         return new Float32Array([
             ...encode_hand(state.hands_l[state.l]),
             ...score_features(state),
             ...game_state_features(state),
             state.remaining / 70,
+            ...meld_type_features_3players(state),
         ]);
     }
 
     function make_hi_features(state, target_l) {
-        // 手牌類推: 185次元 = target_discard(44) + target_meld(38) + target_riichi(1) + score(11) + game(9) + self_discard(44) + self_meld(38)
+        // 手牌類推: 219次元 = target_discard(44) + target_meld(38) + target_riichi(1) + score(11) + game(9) + self_discard(44) + self_meld(38) + visible_counts(34)
         return new Float32Array([
             ...discard_features(state.discards_l[target_l]),
             ...meld_features(state.melds_l[target_l]),
@@ -215,6 +263,7 @@
             ...game_state_features(state),
             ...discard_features(state.discards_l[state.l]),
             ...meld_features(state.melds_l[state.l]),
+            ...visible_counts_vec(state),
         ]);
     }
 
@@ -246,7 +295,10 @@
             try {
                 const out    = await run_session(sessions.behavior_clone, make_bc_features(state));
                 const logits = Array.from(out['logits'].data);
-                const probs  = softmax(logits);
+                // 手牌にない牌のlogitsを-Infinityにしてsoftmaxから除外
+                const hand_vec = encode_hand(state.hands_l[state.l]);
+                const masked   = logits.map((v, i) => hand_vec[i] > 0 ? v : -Infinity);
+                const probs    = softmax(masked);
                 result.behavior_clone = {
                     top_actions: probs
                         .map((p, i) => ({ tile: PAI_NAMES[i], prob: p }))
@@ -301,9 +353,9 @@
     async function load_sessions() {
         const s = {};
         const models = [
-            ['hand_inference', MODEL_BASE + 'hand_inference/v1/model.onnx'],
-            ['behavior_clone', MODEL_BASE + 'behavior_clone/v1/model.onnx'],
-            ['value_function', MODEL_BASE + 'value_function/v1/model.onnx'],
+            ['hand_inference', MODEL_BASE + 'hand_inference/v2/model.onnx'],
+            ['behavior_clone', MODEL_BASE + 'behavior_clone/v2/model.onnx'],
+            ['value_function', MODEL_BASE + 'value_function/v2/model.onnx'],
         ];
         for (const [name, path] of models) {
             try {

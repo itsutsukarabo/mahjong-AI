@@ -1,12 +1,13 @@
 """
-行動クローンモデル: 公開情報 + 自手牌から打牌を予測する
+行動クローンモデル: 公開情報 + 自手牌 + 他家3人の捨て牌から打牌を予測する
 
-入力 (136次元):
+入力 (268次元):
   自手牌 (34)
   自捨て牌パターン (44)
   自副露パターン (38)
   点数状況 (11)
   ゲーム状況 (9)
+  他家3人の捨て牌パターン (44×3)
 
 出力:
   打牌する牌のインデックス (34クラス)
@@ -25,16 +26,17 @@ from torch.utils.data import Dataset, DataLoader
 # ---- 設定 ----
 
 DATA_DIR  = Path(__file__).parent.parent / "data" / "features"
-MODEL_DIR = Path(__file__).parent.parent / "models" / "behavior_clone" / "v1"
+MODEL_DIR = Path(__file__).parent.parent / "models" / "behavior_clone" / "v2"
 
 CONFIG = {
-    "input_dim":   136,
-    "hidden_dims": [256, 256, 128],
-    "n_actions":   34,
-    "dropout":     0.3,
-    "lr":          1e-3,
-    "batch_size":  512,
-    "epochs":      50,
+    "input_dim":    268,
+    "hidden_dims":  [512, 256, 128],
+    "n_actions":    34,
+    "dropout":      0.3,
+    "lr":           1e-3,
+    "weight_decay": 1e-4,
+    "batch_size":   512,
+    "epochs":       50,
     "early_stop_patience": 5,
 }
 
@@ -49,12 +51,16 @@ class BehaviorCloneDataset(Dataset):
         self.labels = torch.tensor(
             [s["label_action"] for s in data], dtype=torch.long
         ).clamp(0, CONFIG["n_actions"] - 1)
+        # 手牌にある牌のみ True のマスク (打牌可能な牌のみ学習対象)
+        self.masks = torch.tensor(
+            [s["label_mask"] for s in data], dtype=torch.bool
+        )
 
     def __len__(self):
         return len(self.features)
 
     def __getitem__(self, idx):
-        return self.features[idx], self.labels[idx]
+        return self.features[idx], self.labels[idx], self.masks[idx]
 
 
 # ---- モデル ----
@@ -65,7 +71,7 @@ class BehaviorCloneModel(nn.Module):
         layers = []
         prev = input_dim
         for h in hidden_dims:
-            layers += [nn.Linear(prev, h), nn.ReLU(), nn.Dropout(dropout)]
+            layers += [nn.Linear(prev, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Dropout(dropout)]
             prev = h
         self.backbone = nn.Sequential(*layers)
         self.head = nn.Linear(prev, n_actions)
@@ -79,10 +85,13 @@ class BehaviorCloneModel(nn.Module):
 def train_epoch(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0.0
-    for features, labels in loader:
-        features, labels = features.to(device), labels.to(device)
+    for features, labels, masks in loader:
+        features, labels, masks = features.to(device), labels.to(device), masks.to(device)
         optimizer.zero_grad()
-        loss = criterion(model(features), labels)
+        logits = model(features)
+        # 手牌にない牌のlogitsを-infにしてソフトマックスから除外
+        logits = logits.masked_fill(~masks, float('-inf'))
+        loss = criterion(logits, labels)
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * len(features)
@@ -94,9 +103,10 @@ def eval_epoch(model, loader, criterion, device):
     model.eval()
     total_loss = 0.0
     correct = 0
-    for features, labels in loader:
-        features, labels = features.to(device), labels.to(device)
+    for features, labels, masks in loader:
+        features, labels, masks = features.to(device), labels.to(device), masks.to(device)
         logits = model(features)
+        logits = logits.masked_fill(~masks, float('-inf'))
         total_loss += criterion(logits, labels).item() * len(features)
         correct += (logits.argmax(dim=-1) == labels).sum().item()
     acc = correct / len(loader.dataset)
@@ -137,7 +147,7 @@ def main():
         dropout     = CONFIG["dropout"],
     ).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG["lr"])
+    optimizer = torch.optim.AdamW(model.parameters(), lr=CONFIG["lr"], weight_decay=CONFIG["weight_decay"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2)
     criterion = nn.CrossEntropyLoss()
 

@@ -1,12 +1,13 @@
 """
 手牌類推モデル: 公開情報から他家の手牌確率を推定する
 
-入力 (185次元):
+入力 (219次元):
   捨て牌パターン × 2人分 (44×2)
   副露パターン × 2人分   (38×2)
   リーチ有無 (1)
   点数状況 (11)
   残り牌数・ゲーム状況 (9)
+  見え牌枚数 (34)
 
 出力:
   他家の手牌確率 (34牌 × 5クラス: 0/1/2/3/4枚)
@@ -22,20 +23,20 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from sklearn.metrics import roc_auc_score
 
 # ---- 設定 ----
 
 DATA_DIR  = Path(__file__).parent.parent / "data" / "features"
-MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v1"
+MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v2"
 
 CONFIG = {
-    "input_dim":   185,
+    "input_dim":   219,
     "hidden_dims": [256, 256, 128],
     "n_pai":       34,
-    "n_count_cls": 5,   # 0~4枚
+    "n_count_cls": 5,
     "dropout":     0.3,
     "lr":          1e-3,
+    "weight_decay": 1e-4,
     "batch_size":  512,
     "epochs":      50,
     "early_stop_patience": 5,
@@ -49,7 +50,6 @@ class HandInferenceDataset(Dataset):
         self.features = torch.tensor(
             [s["features"] for s in data], dtype=torch.float32
         )
-        # label_hand: 34次元の枚数ベクトル → クラス (0-4) に変換
         self.labels = torch.tensor(
             [s["label_hand"] for s in data], dtype=torch.long
         ).clamp(0, 4)
@@ -69,10 +69,9 @@ class HandInferenceModel(nn.Module):
         layers = []
         prev = input_dim
         for h in hidden_dims:
-            layers += [nn.Linear(prev, h), nn.ReLU(), nn.Dropout(dropout)]
+            layers += [nn.Linear(prev, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Dropout(dropout)]
             prev = h
         self.backbone = nn.Sequential(*layers)
-        # 各牌の保有枚数を 0-4 の 5クラス分類
         self.head = nn.Linear(prev, n_pai * n_count_cls)
         self.n_pai = n_pai
         self.n_count_cls = n_count_cls
@@ -91,8 +90,7 @@ def train_epoch(model, loader, optimizer, criterion, device):
     for features, labels in loader:
         features, labels = features.to(device), labels.to(device)
         optimizer.zero_grad()
-        logits = model(features)               # (B, 34, 5)
-        # CrossEntropy: (B*34, 5) vs (B*34,)
+        logits = model(features)
         loss = criterion(
             logits.view(-1, model.n_count_cls),
             labels.view(-1)
@@ -117,7 +115,7 @@ def eval_epoch(model, loader, criterion, device):
             labels.view(-1)
         )
         total_loss += loss.item() * len(features)
-        preds = logits.argmax(dim=-1)    # (B, 34)
+        preds = logits.argmax(dim=-1)
         correct += (preds == labels).sum().item()
         total   += labels.numel()
     acc = correct / total
@@ -128,7 +126,6 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"device: {device}")
 
-    # データ読み込み（NDJSON形式、1行1サンプル）
     ndjson_path = DATA_DIR / "hand_inference.ndjson"
     if not ndjson_path.exists():
         print(f"ファイルなし: {ndjson_path}")
@@ -138,7 +135,6 @@ def main():
         all_data = [json.loads(line) for line in f if line.strip()]
     print(f"総サンプル数: {len(all_data)}")
 
-    # シャッフルして train/val/test 分割
     import random
     random.seed(42)
     random.shuffle(all_data)
@@ -166,7 +162,7 @@ def main():
         dropout     = CONFIG["dropout"],
     ).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG["lr"])
+    optimizer = torch.optim.AdamW(model.parameters(), lr=CONFIG["lr"], weight_decay=CONFIG["weight_decay"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2)
     criterion = nn.CrossEntropyLoss()
 
@@ -191,12 +187,10 @@ def main():
                 print("early stopping")
                 break
 
-    # テスト評価
     model.load_state_dict(torch.load(MODEL_DIR / "model.pt", map_location=device))
     test_loss, test_acc = eval_epoch(model, test_loader, criterion, device)
     print(f"test_loss={test_loss:.4f}  test_acc={test_acc:.4f}")
 
-    # 評価結果を保存
     eval_result = {
         "test_loss": test_loss,
         "test_acc":  test_acc,
@@ -205,7 +199,6 @@ def main():
     (MODEL_DIR / "eval_result.json").write_text(json.dumps(eval_result, indent=2))
     (MODEL_DIR / "config.json").write_text(json.dumps(CONFIG, indent=2))
 
-    # ONNX エクスポート
     model.eval()
     dummy = torch.zeros(1, CONFIG["input_dim"])
     torch.onnx.export(
@@ -215,6 +208,7 @@ def main():
         output_names=["logits"],
         dynamic_axes={"features": {0: "batch_size"}, "logits": {0: "batch_size"}},
         opset_version=17,
+        dynamo=False,
     )
     print(f"モデル保存: {MODEL_DIR}")
 
