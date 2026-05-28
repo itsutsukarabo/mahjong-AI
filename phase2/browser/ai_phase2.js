@@ -184,6 +184,48 @@
 
     /* ---- 追加特徴量 ---- */
 
+    function make_tile_identity(tile_idx) {
+        // suit_onehot(4) + num_onehot(9) + is_jihai(1) = 14次元
+        const suit_oh = [0, 0, 0, 0];
+        const num_oh  = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let is_jihai  = 0;
+        if (tile_idx < 9) {
+            suit_oh[0] = 1; num_oh[tile_idx] = 1;
+        } else if (tile_idx < 18) {
+            suit_oh[1] = 1; num_oh[tile_idx - 9] = 1;
+        } else if (tile_idx < 27) {
+            suit_oh[2] = 1; num_oh[tile_idx - 18] = 1;
+        } else {
+            suit_oh[3] = 1; num_oh[tile_idx - 27] = 1; is_jihai = 1;
+        }
+        return [...suit_oh, ...num_oh, is_jihai];
+    }
+
+    function get_neighbor_visible(tile_idx, vis_counts) {
+        // 隣接±1, ±2の visible_count (4次元; 字牌・範囲外は0)
+        const nb = [0, 0, 0, 0];
+        if (tile_idx >= 27) return nb;
+        const suit_offset = Math.floor(tile_idx / 9) * 9;
+        const pos = tile_idx - suit_offset;
+        if (pos >= 2) nb[0] = vis_counts[suit_offset + pos - 2];
+        if (pos >= 1) nb[1] = vis_counts[suit_offset + pos - 1];
+        if (pos <= 7) nb[2] = vis_counts[suit_offset + pos + 1];
+        if (pos <= 6) nb[3] = vis_counts[suit_offset + pos + 2];
+        return nb;
+    }
+
+    function meld_type_single(melds) {
+        // 副露タイプ (4次元): チー/ポン/カン/有無
+        let n_chi = 0, n_pon = 0, n_kan = 0;
+        for (const m of melds) {
+            if (!m) continue;
+            if      (m.match(/^[mpsz]\d{3}[\+\=\-]$/))   n_chi++;
+            else if (m.match(/^[mpsz]\d{3}[\+\=\-]\d$/))  n_pon++;
+            else if (m.match(/^[mpsz]\d{4}/))              n_kan++;
+        }
+        return [n_chi, n_pon, n_kan, (n_chi + n_pon + n_kan > 0) ? 1 : 0];
+    }
+
     function visible_counts_vec(state) {
         // 全プレイヤーの捨て牌・副露 + viewer自身の手牌から見え牌枚数を計算（34次元、/4正規化）
         const counts = new Array(N_PAI).fill(0);
@@ -254,17 +296,45 @@
     }
 
     function make_hi_features(state, target_l) {
-        // 手牌類推: 219次元 = target_discard(44) + target_meld(38) + target_riichi(1) + score(11) + game(9) + self_discard(44) + self_meld(38) + visible_counts(34)
-        return new Float32Array([
-            ...discard_features(state.discards_l[target_l]),
-            ...meld_features(state.melds_l[target_l]),
-            state.riichi_l[target_l] ? 1 : 0,
+        // Per-tile アーキテクチャ v3: 34×22 + 29 = 777次元
+        const global_feats = [
             ...score_features(state),
             ...game_state_features(state),
-            ...discard_features(state.discards_l[state.l]),
-            ...meld_features(state.melds_l[state.l]),
-            ...visible_counts_vec(state),
-        ]);
+            state.riichi_l[target_l] ? 1 : 0,
+            ...meld_type_single(state.melds_l[target_l]),
+            ...meld_type_single(state.melds_l[state.l]),
+        ];  // 29次元
+
+        const hand_vec   = encode_hand(state.hands_l[state.l]);
+        const vis_counts = visible_counts_vec(state);
+
+        const target_disc_vec = new Array(N_PAI).fill(0);
+        for (const p of state.discards_l[target_l]) {
+            const pi = pai_to_idx(p);
+            if (pi >= 0) target_disc_vec[pi]++;
+        }
+
+        const suit_disc_target = [0, 0, 0, 0];
+        for (const p of state.discards_l[target_l]) {
+            const base = p.replace(/[_*+=\-]/g, '');
+            const s = 'mpsz'.indexOf(base[0]);
+            if (s >= 0) suit_disc_target[s]++;
+        }
+
+        const per_tile_flat = [];
+        for (let i = 0; i < N_PAI; i++) {
+            const suit_idx = i < 9 ? 0 : i < 18 ? 1 : i < 27 ? 2 : 3;
+            per_tile_flat.push(
+                ...make_tile_identity(i),
+                hand_vec[i] / 4,
+                target_disc_vec[i] / 4,
+                vis_counts[i],
+                ...get_neighbor_visible(i, vis_counts),
+                suit_disc_target[suit_idx] / 18,
+            );
+        }
+
+        return new Float32Array([...per_tile_flat, ...global_feats]);
     }
 
     /* ---- ユーティリティ ---- */
@@ -353,7 +423,7 @@
     async function load_sessions() {
         const s = {};
         const models = [
-            ['hand_inference', MODEL_BASE + 'hand_inference/v2/model.onnx'],
+            ['hand_inference', MODEL_BASE + 'hand_inference/v3/model.onnx'],
             ['behavior_clone', MODEL_BASE + 'behavior_clone/v2/model.onnx'],
             ['value_function', MODEL_BASE + 'value_function/v2/model.onnx'],
         ];

@@ -217,6 +217,54 @@ function encode_hand(hand_str) {
 // ---- 追加特徴量 ----
 
 /**
+ * タイルインデックスから suit_onehot(4) + num_onehot(9) + is_jihai(1) を生成（14次元）
+ */
+function make_tile_identity(tile_idx) {
+    const suit_oh = [0, 0, 0, 0];
+    const num_oh  = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let is_jihai  = 0;
+    if (tile_idx < 9) {
+        suit_oh[0] = 1; num_oh[tile_idx] = 1;
+    } else if (tile_idx < 18) {
+        suit_oh[1] = 1; num_oh[tile_idx - 9] = 1;
+    } else if (tile_idx < 27) {
+        suit_oh[2] = 1; num_oh[tile_idx - 18] = 1;
+    } else {
+        suit_oh[3] = 1; num_oh[tile_idx - 27] = 1; is_jihai = 1;
+    }
+    return [...suit_oh, ...num_oh, is_jihai];
+}
+
+/**
+ * タイル i の隣接±1, ±2 の visible_count を返す（4次元; 字牌・範囲外は0）
+ */
+function get_neighbor_visible(tile_idx, vis_counts) {
+    const nb = [0, 0, 0, 0];
+    if (tile_idx >= 27) return nb;
+    const suit_offset = Math.floor(tile_idx / 9) * 9;
+    const pos = tile_idx - suit_offset;
+    if (pos >= 2) nb[0] = vis_counts[suit_offset + pos - 2];
+    if (pos >= 1) nb[1] = vis_counts[suit_offset + pos - 1];
+    if (pos <= 7) nb[2] = vis_counts[suit_offset + pos + 1];
+    if (pos <= 6) nb[3] = vis_counts[suit_offset + pos + 2];
+    return nb;
+}
+
+/**
+ * 副露タイプ (4次元): チー枚数/ポン枚数/カン枚数/副露有無
+ */
+function meld_type_single(melds) {
+    let n_chi = 0, n_pon = 0, n_kan = 0;
+    for (const m of melds) {
+        if (!m) continue;
+        if      (m.match(/^[mpsz]\d{3}[\+\=\-]$/))   n_chi++;
+        else if (m.match(/^[mpsz]\d{3}[\+\=\-]\d$/))  n_pon++;
+        else if (m.match(/^[mpsz]\d{4}/))              n_kan++;
+    }
+    return [n_chi, n_pon, n_kan, (n_chi + n_pon + n_kan > 0) ? 1 : 0];
+}
+
+/**
  * 全プレイヤーの捨て牌・副露 + viewer自身の手牌から「見え牌枚数」を計算（34次元、/4 正規化）
  * 相手が持てない枚数の上限を示す情報として手牌推定に使用する
  */
@@ -268,25 +316,63 @@ function others_meld_type_features(rec) {
 // ---- 3モデル用の特徴量・ラベル生成 ----
 
 /**
- * 手牌類推モデル用
+ * 手牌類推モデル用 (Per-tile アーキテクチャ v3)
  * 視点プレイヤー l から見た 対象プレイヤー target_l の特徴量 + ラベル
+ *
+ * グローバル特徴量 (29次元):
+ *   score(11) + game(9) + riichi(1) + target_meld_type(4) + self_meld_type(4)
+ *
+ * Per-tile 特徴量 (34タイル × 22次元):
+ *   tile_identity(14) + self_count(1) + target_discard(1) + visible(1) + neighbor_vis(4) + suit_disc(1)
+ *
+ * 合計: 34×22 + 29 = 748 + 29 = 777次元 (per_tile_flat を先頭、global を末尾に配置)
  */
 function make_hand_inference_sample(rec, target_l) {
-    const features = [
-        ...discard_features(rec.discards_l[target_l]),  // 44
-        ...meld_features(rec.melds_l[target_l]),         // 38
-        riichi_l_val(rec.riichi_l[target_l]),            // 1
+    // グローバル特徴量 (29次元)
+    const global_feats = [
         ...score_features(rec),                          // 11
         ...game_state_features(rec),                     // 9
-        ...discard_features(rec.discards_l[rec.l]),      // 44
-        ...meld_features(rec.melds_l[rec.l]),            // 38
-        ...visible_counts_vec(rec, rec.l),               // 34
+        riichi_l_val(rec.riichi_l[target_l]),            // 1
+        ...meld_type_single(rec.melds_l[target_l]),      // 4
+        ...meld_type_single(rec.melds_l[rec.l]),         // 4
     ];
-    // 合計: 44+38+1+11+9+44+38+34 = 219次元
 
-    const hand_vec = encode_hand(rec.hands_l[target_l]);
+    // Per-tile 用の事前計算
+    const hand_vec   = encode_hand(rec.hands_l[rec.l]);
+    const vis_counts = visible_counts_vec(rec, rec.l);  // /4 正規化済み
 
-    return { features, label_hand: hand_vec, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
+    const target_disc_vec = new Array(N_PAI).fill(0);
+    for (const p of rec.discards_l[target_l]) {
+        const pi = pai_to_idx(p);
+        if (pi >= 0) target_disc_vec[pi]++;
+    }
+
+    const suit_disc_target = [0, 0, 0, 0];  // m/p/s/z
+    for (const p of rec.discards_l[target_l]) {
+        const base = p.replace(/[_*+=\-]/g, '');
+        const s = 'mpsz'.indexOf(base[0]);
+        if (s >= 0) suit_disc_target[s]++;
+    }
+
+    // Per-tile flat (34 × 22次元)
+    const per_tile_flat = [];
+    for (let i = 0; i < N_PAI; i++) {
+        const suit_idx = i < 9 ? 0 : i < 18 ? 1 : i < 27 ? 2 : 3;
+        per_tile_flat.push(
+            ...make_tile_identity(i),                    // 14
+            hand_vec[i] / 4,                             // 1
+            target_disc_vec[i] / 4,                      // 1
+            vis_counts[i],                               // 1
+            ...get_neighbor_visible(i, vis_counts),      // 4
+            suit_disc_target[suit_idx] / 18,             // 1
+        );  // 22次元/タイル
+    }
+
+    const features = [...per_tile_flat, ...global_feats];
+    // 合計: 34×22 + 29 = 777次元
+
+    const hand_vec_target = encode_hand(rec.hands_l[target_l]);
+    return { features, label_hand: hand_vec_target, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
 }
 
 function riichi_l_val(v) { return v ? 1 : 0; }
