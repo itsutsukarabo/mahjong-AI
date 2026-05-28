@@ -423,7 +423,7 @@
     async function load_sessions() {
         const s = {};
         const models = [
-            ['hand_inference', MODEL_BASE + 'hand_inference/v3/model.onnx'],
+            ['hand_inference', MODEL_BASE + 'hand_inference/v2/model.onnx'],
             ['behavior_clone', MODEL_BASE + 'behavior_clone/v2/model.onnx'],
             ['value_function', MODEL_BASE + 'value_function/v2/model.onnx'],
         ];
