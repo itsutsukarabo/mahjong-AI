@@ -259,6 +259,30 @@
         );
     }
 
+    function pass_pon_signal_from_state(state, target_l, max_discards = 70) {
+        // ブラウザ側はターゲットの手牌不明なため全スルーをカウント（訓練側より粗い近似）
+        const signal = new Array(N_PAI).fill(0);
+        let total_d = 0;
+        for (let l = 0; l < 4; l++) {
+            if (l === target_l) continue;
+            for (const tile of state.discards_l[l]) {
+                const tile_norm = tile.replace(/[_*+=\-]/g, '').replace(/^([mps])0$/, '$15');
+                const pi = (PAI_INDEX[tile_norm] !== undefined) ? PAI_INDEX[tile_norm] : -1;
+                if (pi >= 0) {
+                    // ターゲットが後でポンした牌はスルーカウントしない
+                    const already_ponned = state.melds_l[target_l].some(m => {
+                        if (!m || !m.match(/^[mpsz]\d{3}[\+\=\-]\d$/)) return false;
+                        const s = m[0], n = parseInt(m[1]);
+                        return `${s}${n === 0 ? 5 : n}` === tile_norm;
+                    });
+                    if (!already_ponned) signal[pi] += total_d / max_discards;
+                }
+                total_d++;
+            }
+        }
+        return signal;
+    }
+
     function meld_type_features_3players(state) {
         // viewer以外の3プレイヤーの副露タイプ: (n_chi, n_pon, n_kan, has_meld) × 3 = 12次元
         const vec = [];
@@ -303,18 +327,37 @@
         ]);
     }
 
-    function make_hi_features(state, target_l) {
-        // v6: 222次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+self_discard(44)+self_meld(38)+visible_counts(34)+red_discard_signal(3)
+    function make_yaku_features(state, target_l) {
+        // 役推定: 92次元 = target_discard(44)+target_meld(38)+riichi(1)+game_state(9)
         return new Float32Array([
             ...discard_features(state.discards_l[target_l]),
             ...meld_features(state.melds_l[target_l]),
             state.riichi_l[target_l] ? 1 : 0,
-            ...score_features(state),
             ...game_state_features(state),
-            ...discard_features(state.discards_l[state.l]),
-            ...meld_features(state.melds_l[state.l]),
-            ...visible_counts_vec(state),
-            ...red_discard_signal(state.discards_l[target_l], state.riichi_l[target_l]),
+        ]);
+    }
+
+    function make_hi_features(state, target_l, yaku_probs) {
+        // v6: 355次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+
+        //     self_discard(44)+self_meld(38)+visible_counts(34)+red_discard_signal(3)+
+        //     other1_discard(44)+other2_discard(44)+pass_pon_signal(34)+yaku_prob(11)
+        const other_ls = [1, 2, 3]
+            .map(rel => (state.l + rel) % 4)
+            .filter(l => l !== target_l);
+        return new Float32Array([
+            ...discard_features(state.discards_l[target_l]),           // 44
+            ...meld_features(state.melds_l[target_l]),                  // 38
+            state.riichi_l[target_l] ? 1 : 0,                          // 1
+            ...score_features(state),                                   // 11
+            ...game_state_features(state),                              // 9
+            ...discard_features(state.discards_l[state.l]),             // 44
+            ...meld_features(state.melds_l[state.l]),                   // 38
+            ...visible_counts_vec(state),                               // 34
+            ...red_discard_signal(state.discards_l[target_l], state.riichi_l[target_l]),  // 3
+            ...discard_features(state.discards_l[other_ls[0]]),         // 44
+            ...discard_features(state.discards_l[other_ls[1]]),         // 44
+            ...pass_pon_signal_from_state(state, target_l),             // 34
+            ...(yaku_probs || new Array(11).fill(0)),                   // 11
         ]);
     }
 
@@ -376,19 +419,37 @@
                 const players = [];
                 for (let rel = 1; rel <= 3; rel++) {
                     const target_l = (menfeng + rel) % 4;
-                    const out      = await run_session(sessions.hand_inference, make_hi_features(state, target_l));
-                    // out['logits'].data は Float32Array, shape [1, 34, 5] → flat length 170
-                    const flat     = out['logits'].data;
+
+                    // Stage 1: 役推定（yaku_inference モデルがあれば使用）
+                    let yaku_probs = null;
+                    if (sessions.yaku_inference) {
+                        try {
+                            const yaku_out = await run_session(sessions.yaku_inference, make_yaku_features(state, target_l));
+                            const yaku_logits = Array.from(yaku_out['logits'].data);
+                            yaku_probs = yaku_logits.map(x => 1 / (1 + Math.exp(-x)));
+                        } catch(e) { console.warn('AI Phase2: yaku_inference error', e); }
+                    }
+
+                    // Stage 2: 手牌推定
+                    const out  = await run_session(sessions.hand_inference, make_hi_features(state, target_l, yaku_probs));
+                    const flat = out['logits'].data;      // Float32Array [170] = 34×5
                     const probs_per_tile = [];
                     for (let tile = 0; tile < N_PAI; tile++) {
                         probs_per_tile.push(softmax([flat[tile*5], flat[tile*5+1], flat[tile*5+2], flat[tile*5+3], flat[tile*5+4]]));
                     }
-                    players.push({
-                        l: target_l, rel, seat_name: SEAT_NAMES[rel - 1],
-                        probs_per_tile,
-                        // 赤牌は現モデル未対応 (m0/p0/s0 は m5/p5/s5 に統合)。将来モデル対応時にここへ確率を格納する。
-                        aka: { m0: null, p0: null, s0: null },
-                    });
+
+                    // 赤牌所持確率 (red_logits がある場合)
+                    let aka = { m0: null, p0: null, s0: null };
+                    if (out['red_logits']) {
+                        const red_f = out['red_logits'].data;  // Float32Array [6] = 3×2
+                        aka = {
+                            m0: softmax([red_f[0], red_f[1]])[1],
+                            p0: softmax([red_f[2], red_f[3]])[1],
+                            s0: softmax([red_f[4], red_f[5]])[1],
+                        };
+                    }
+
+                    players.push({ l: target_l, rel, seat_name: SEAT_NAMES[rel - 1], probs_per_tile, aka });
                 }
                 result.hand_inference = { players };
             } catch(e) { console.warn('AI Phase2: hand_inference error', e); }
@@ -407,6 +468,7 @@
             ['hand_inference', MODEL_BASE + 'hand_inference/v6/model.onnx'],
             ['behavior_clone', MODEL_BASE + 'behavior_clone/v2/model.onnx'],
             ['value_function', MODEL_BASE + 'value_function/v2/model.onnx'],
+            ['yaku_inference', MODEL_BASE + 'yaku_inference/v1/model.onnx'],
         ];
         for (const [name, path] of models) {
             try {

@@ -214,6 +214,29 @@ function encode_hand(hand_str) {
     return vec;
 }
 
+/**
+ * 手牌文字列 → 枚数ベクトル(34次元) + 赤牌所持フラグ(3次元: 5m/5p/5s)
+ */
+function encode_hand_red(hand_str) {
+    const vec = new Array(N_PAI).fill(0);
+    const red = [0, 0, 0];  // [5m, 5p, 5s]
+    if (!hand_str) return { counts: vec, red };
+    const base = hand_str.split(',')[0];
+    let s = '';
+    for (const c of base) {
+        if ('mpsz'.includes(c)) { s = c; continue; }
+        const n = parseInt(c);
+        if (isNaN(n)) continue;
+        if (n === 0) {
+            const suit_idx = ['m', 'p', 's'].indexOf(s);
+            if (suit_idx >= 0) red[suit_idx] = 1;
+        }
+        const pi = pai_to_idx(`${s}${n === 0 ? 5 : n}`);
+        if (pi >= 0) vec[pi]++;
+    }
+    return { counts: vec, red };
+}
+
 // ---- 追加特徴量 ----
 
 /**
@@ -262,6 +285,42 @@ function meld_type_single(melds) {
         else if (m.match(/^[mpsz]\d{4}/))              n_kan++;
     }
     return [n_chi, n_pon, n_kan, (n_chi + n_pon + n_kan > 0) ? 1 : 0];
+}
+
+/**
+ * ポンスルー信号: ポンできたのにしなかった牌をタイルインデックスごとに集計（34次元）
+ * t / max_discards で早さを重みに使う（最近のスルーほど大きい値）
+ */
+function pass_pon_signal(pon_passes, max_discards = 70) {
+    const signal = new Array(N_PAI).fill(0);
+    for (const { p, t } of (pon_passes || [])) {
+        const pi = pai_to_idx(p);
+        if (pi >= 0) signal[pi] += t / max_discards;
+    }
+    return signal;
+}
+
+// ---- 役推定用エンコーディング ----
+
+// 11クラス: tanyao/honitsu/chinitsu/yakuhai_haku/yakuhai_hatsu/yakuhai_chun/
+//           yakuhai_ba/yakuhai_ji/pinfu/chanta/riichi
+const YAKU_LABELS = [
+    ns => ns.includes('断幺九'),
+    ns => ns.includes('混一色'),
+    ns => ns.includes('清一色'),
+    ns => ns.includes('役牌 白'),
+    ns => ns.includes('役牌 發'),
+    ns => ns.includes('役牌 中'),
+    ns => ns.some(n => n.startsWith('場風')),
+    ns => ns.some(n => n.startsWith('自風')),
+    ns => ns.includes('平和'),
+    ns => ns.includes('混全帯幺九') || ns.includes('純全帯幺九'),
+    ns => ns.includes('立直') || ns.includes('両立直'),
+];
+
+function encode_yaku(hupai_list) {
+    const names = (hupai_list || []).map(h => h.name || h);
+    return YAKU_LABELS.map(fn => fn(names) ? 1 : 0);
 }
 
 /**
@@ -327,13 +386,19 @@ function others_meld_type_features(rec) {
 // ---- 3モデル用の特徴量・ラベル生成 ----
 
 /**
- * 手牌類推モデル用 (v6: flat 222次元)
+ * 手牌類推モデル用 (v6: flat 344次元 ※学習時は add_yaku_features.py で355次元になる)
  * 視点プレイヤー l から見た 対象プレイヤー target_l の特徴量 + ラベル
  *
  * target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
- * self_discard(44) + self_meld(38) + visible_counts(34) + red_discard_signal(3) = 222次元
+ * self_discard(44) + self_meld(38) + visible_counts(34) + red_discard_signal(3) +
+ * other1_discard(44) + other2_discard(44) + pass_pon_signal(34) = 344次元
  */
 function make_hand_inference_sample(rec, target_l) {
+    // viewer でも target でもない2プレイヤーを相対順で取得
+    const other_ls = [1, 2, 3]
+        .map(rel => (rec.l + rel) % 4)
+        .filter(l => l !== target_l);  // 必ず2要素
+
     const features = [
         ...discard_features(rec.discards_l[target_l]),  // 44
         ...meld_features(rec.melds_l[target_l]),         // 38
@@ -344,10 +409,34 @@ function make_hand_inference_sample(rec, target_l) {
         ...meld_features(rec.melds_l[rec.l]),            // 38
         ...visible_counts_vec(rec, rec.l),               // 34
         ...red_discard_signal(rec.discards_l[target_l], rec.riichi_l[target_l]),  // 3
-    ];  // 222次元
+        ...discard_features(rec.discards_l[other_ls[0]]),  // 44
+        ...discard_features(rec.discards_l[other_ls[1]]),  // 44
+        ...pass_pon_signal(rec.pon_passes_l?.[target_l]),   // 34
+    ];  // 344次元
 
-    const hand_vec_target = encode_hand(rec.hands_l[target_l]);
-    return { features, label_hand: hand_vec_target, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
+    const { counts: hand_vec_target, red: red_target } = encode_hand_red(rec.hands_l[target_l]);
+    return { features, label_hand: hand_vec_target, label_red: red_target, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
+}
+
+/**
+ * 役推定モデル用 (Stage 1: 92次元入力)
+ * 意思決定者 l の行動情報から最終役を予測するサンプル
+ *
+ * target_discard(44) + target_meld(38) + riichi(1) + game_state(9) = 92次元
+ */
+function make_yaku_sample(rec) {
+    if (!rec.yaku_l) return null;
+    const features = [
+        ...discard_features(rec.discards_l[rec.l]),  // 44
+        ...meld_features(rec.melds_l[rec.l]),         // 38
+        riichi_l_val(rec.riichi_l[rec.l]),            // 1
+        ...game_state_features(rec),                  // 9
+    ];  // 92次元
+
+    const yaku = rec.yaku_l[rec.l] || [];
+    const label_yaku = encode_yaku(yaku);
+    const won = label_yaku.some(v => v > 0);
+    return { features, label_yaku, won, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx } };
 }
 
 function riichi_l_val(v) { return v ? 1 : 0; }
@@ -434,9 +523,10 @@ async function main() {
         hand_inference: fs.createWriteStream(path.join(DEST, 'hand_inference.ndjson'), { encoding: 'utf8' }),
         behavior_clone: fs.createWriteStream(path.join(DEST, 'behavior_clone.ndjson'), { encoding: 'utf8' }),
         value_function: fs.createWriteStream(path.join(DEST, 'value_function.ndjson'), { encoding: 'utf8' }),
+        yaku_inference: fs.createWriteStream(path.join(DEST, 'yaku_inference.ndjson'), { encoding: 'utf8' }),
     };
 
-    let total_recs = 0, hi_cnt = 0, bc_cnt = 0, vf_cnt = 0;
+    let total_recs = 0, hi_cnt = 0, bc_cnt = 0, vf_cnt = 0, yi_cnt = 0;
 
     for (const f of files) {
         process.stdout.write(`処理中: ${path.basename(f)} ... `);
@@ -446,6 +536,10 @@ async function main() {
             streams.value_function.write(JSON.stringify(make_value_sample(rec)) + '\n');
             bc_cnt++;
             vf_cnt++;
+
+            const yi = make_yaku_sample(rec);
+            if (yi) { streams.yaku_inference.write(JSON.stringify(yi) + '\n'); yi_cnt++; }
+
             for (let target_l = 0; target_l < 4; target_l++) {
                 if (target_l === rec.l) continue;
                 streams.hand_inference.write(JSON.stringify(make_hand_inference_sample(rec, target_l)) + '\n');
@@ -462,6 +556,7 @@ async function main() {
     console.log(`  hand_inference: ${hi_cnt} サンプル → ${path.join(DEST, 'hand_inference.ndjson')}`);
     console.log(`  behavior_clone: ${bc_cnt} サンプル → ${path.join(DEST, 'behavior_clone.ndjson')}`);
     console.log(`  value_function: ${vf_cnt} サンプル → ${path.join(DEST, 'value_function.ndjson')}`);
+    console.log(`  yaku_inference: ${yi_cnt} サンプル → ${path.join(DEST, 'yaku_inference.ndjson')}`);
 }
 
 main().catch(err => {

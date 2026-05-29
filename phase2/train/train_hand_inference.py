@@ -1,21 +1,30 @@
 """
 手牌類推モデル v6: v5 + global sum ソフト制約 + 4枚ハードマスク + 赤牌捨てシグナル
+                      + 他家捨て牌 + 赤牌所持出力 + ポンスルー信号 + 役推定特徴量
 
-入力 (222次元):
+入力 (355次元):
   target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
-  self_discard(44) + self_meld(38) + visible_counts(34) + red_discard_signal(3)
+  self_discard(44)   + self_meld(38)   + visible_counts(34) +
+  red_discard_signal(3)   [index 219:222] +
+  other1_discard(44)      [index 222:266] +
+  other2_discard(44)      [index 266:310] +
+  pass_pon_signal(34)     [index 310:344] +
+  yaku_prob(11)           [index 344:355]
 
 アーキテクチャ (v5と同一):
-  1. global_encoder (222->256->d_model + BN): 全特徴量のグローバル圧縮
+  1. global_encoder (355->256->d_model + BN): 全特徴量のグローバル圧縮
   2. tile_embed (Embedding[34, d_model]): タイル固有の学習表現
   3. visible_proj (Linear[1, d_model]): visible_count のタイル別情報
   4. TransformerEncoder (nhead=4, num_layers=3, Pre-LN): タイル間通信
   5. Per-tile head (Linear[d_model, 5]): 各タイルの枚数クラス予測
+  6. red_head (Linear[d_model, 2]): 5m/5p/5s の赤牌所持 binary 予測
 
 損失関数:
-  loss = CE + λ * MSE(Σ E[count_i], Σ label_i)   (λ = LAMBDA_GLOBAL_SUM)
+  loss = CE + λ_gs * MSE(Σ E[count_i], Σ label_i)
+       + λ_red_ce * CE(red_logits, label_red)
+       + λ_red_cons * ReLU(P(赤持ち) - P(5を1枚以上持つ)).mean()
 
-出力: (B, 34, 5)  ← forward内で4枚ハードマスク適用済み
+出力: logits(B, 34, 5), red_logits(B, 3, 2)
 """
 
 import json
@@ -35,7 +44,7 @@ DATA_DIR  = Path(__file__).parent.parent / "data" / "features"
 MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v6"
 
 CONFIG = {
-    "input_dim":    222,
+    "input_dim":    355,
     "d_model":      128,
     "nhead":        4,
     "num_layers":   3,
@@ -49,44 +58,47 @@ CONFIG = {
     "early_stop_patience": 7,
 }
 
-# visible_counts は222次元の185番目から34次元 (index 185-218)
-VISIBLE_OFFSET = 185
-
-# global sum 損失の重み: loss = CE + λ * MSE(expected_total, label_total)
-LAMBDA_GLOBAL_SUM = 0.05
+VISIBLE_OFFSET     = 185
+LAMBDA_GLOBAL_SUM  = 0.05
+LAMBDA_RED_CE      = 0.3
+LAMBDA_RED_CONS    = 0.1
 
 
 # ---- データセット ----
 
 class HandInferenceDataset(Dataset):
     def __init__(self, data):
-        self.features = torch.tensor(
+        self.features   = torch.tensor(
             [s["features"] for s in data], dtype=torch.float32
         )
-        self.labels = torch.tensor(
+        self.labels     = torch.tensor(
             [s["label_hand"] for s in data], dtype=torch.long
         ).clamp(0, 4)
+        self.labels_red = torch.tensor(
+            [s["label_red"] for s in data], dtype=torch.long
+        )
 
     def __len__(self):
         return len(self.features)
 
     def __getitem__(self, idx):
-        return self.features[idx], self.labels[idx]
+        return self.features[idx], self.labels[idx], self.labels_red[idx]
 
 
-# ---- モデル (Transformer + hard mask) ----
+# ---- モデル (Transformer + hard mask + red head) ----
 
 class HandInferenceV6(nn.Module):
     """
-    v5 Transformer + 4枚ハードマスク (forward内)。
-    アーキテクチャはv5と同一; input_dim=222 (v5の219 + red_discard_signal 3次元)。
+    v5 Transformer + 4枚ハードマスク + 赤牌所持ヘッド。
+    input_dim=355 (v5の219 + red_discard(3) + others(88) + pon_pass(34) + yaku(11))。
 
-    各タイルトークン = GlobalEncoder(222次元) + TileEmbed(tile_id) + VisibleProj(visible_count_i)
+    各タイルトークン = GlobalEncoder(355次元) + TileEmbed(tile_id) + VisibleProj(visible_count_i)
+    red_head: 5m(idx4)/5p(idx13)/5s(idx22) のトークンから binary 分類
     """
 
     def __init__(self, input_dim, d_model, nhead, num_layers, n_pai, n_count_cls, dropout):
         super().__init__()
-        self.n_pai = n_pai
+        self.n_pai       = n_pai
         self.n_count_cls = n_count_cls
 
         self.global_encoder = nn.Sequential(
@@ -96,7 +108,7 @@ class HandInferenceV6(nn.Module):
             nn.Linear(256, d_model),
         )
 
-        self.tile_embed = nn.Embedding(n_pai, d_model)
+        self.tile_embed  = nn.Embedding(n_pai, d_model)
         self.visible_proj = nn.Linear(1, d_model, bias=False)
 
         encoder_layer = nn.TransformerEncoderLayer(
@@ -108,31 +120,36 @@ class HandInferenceV6(nn.Module):
             norm_first=True,
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.head = nn.Linear(d_model, n_count_cls)
+        self.head     = nn.Linear(d_model, n_count_cls)
+        self.red_head = nn.Linear(d_model, 2)  # 赤牌所持 binary (2クラス)
 
-        self.register_buffer("tile_ids",    torch.arange(n_pai))
-        self.register_buffer("count_range", torch.arange(n_count_cls))
+        self.register_buffer("tile_ids",     torch.arange(n_pai))
+        self.register_buffer("count_range",  torch.arange(n_count_cls))
+        self.register_buffer("red_tile_idx", torch.tensor([4, 13, 22]))  # 5m/5p/5s
 
     def forward(self, x):
-        # x: [B, 222]
-        g = self.global_encoder(x)                                     # [B, d_model]
+        # x: [B, input_dim]
+        g = self.global_encoder(x)                                            # [B, d_model]
 
-        tile_emb = self.tile_embed(self.tile_ids)                       # [34, d_model]
+        tile_emb = self.tile_embed(self.tile_ids)                             # [34, d_model]
         vis = x[:, VISIBLE_OFFSET:VISIBLE_OFFSET + self.n_pai].unsqueeze(-1)  # [B, 34, 1]
-        vis_emb = self.visible_proj(vis)                                # [B, 34, d_model]
+        vis_emb = self.visible_proj(vis)                                      # [B, 34, d_model]
 
-        tokens = g.unsqueeze(1) + tile_emb.unsqueeze(0) + vis_emb      # [B, 34, d_model]
-        out    = self.transformer(tokens)                               # [B, 34, d_model]
-        logits = self.head(out)                                         # [B, 34, 5]
+        tokens = g.unsqueeze(1) + tile_emb.unsqueeze(0) + vis_emb             # [B, 34, d_model]
+        out    = self.transformer(tokens)                                      # [B, 34, d_model]
+        logits = self.head(out)                                                # [B, 34, 5]
 
-        # 4枚ハードマスク: visible_counts * 4 = 見えている枚数（自手牌含む）
-        # count > 4 - visible は物理的に不可能 → -inf で強制除外
+        # 4枚ハードマスク
         vis_raw = (x[:, VISIBLE_OFFSET:VISIBLE_OFFSET + self.n_pai] * 4).round().long().clamp(0, 4)
-        hidden_remaining = (4 - vis_raw).clamp(min=0)                  # [B, 34]
-        mask = self.count_range > hidden_remaining.unsqueeze(-1)        # [B, 34, 5]
+        hidden_remaining = (4 - vis_raw).clamp(min=0)                         # [B, 34]
+        mask = self.count_range > hidden_remaining.unsqueeze(-1)              # [B, 34, 5]
         logits = logits.masked_fill(mask, float('-inf'))
 
-        return logits                                                   # [B, 34, 5]
+        # 赤牌予測: 5m/5p/5s のタイルトークンから binary 分類
+        red_tokens = out[:, self.red_tile_idx, :]                             # [B, 3, d_model]
+        red_logits = self.red_head(red_tokens)                                # [B, 3, 2]
+
+        return logits, red_logits                                             # [B, 34, 5], [B, 3, 2]
 
 
 # ---- 学習・評価 ----
@@ -141,22 +158,37 @@ def train_epoch(model, loader, optimizer, device):
     model.train()
     total_ce     = 0.0
     total_global = 0.0
-    count_vals = torch.arange(model.n_count_cls, device=device, dtype=torch.float32)
+    count_vals   = torch.arange(model.n_count_cls, device=device, dtype=torch.float32)
+    five_idx     = model.red_tile_idx  # [3]
 
-    for features, labels in loader:
-        features, labels = features.to(device), labels.to(device)
+    for features, labels, labels_red in loader:
+        features   = features.to(device)
+        labels     = labels.to(device)
+        labels_red = labels_red.to(device)
         optimizer.zero_grad()
-        logits = model(features)                                        # [B, 34, 5]
+
+        logits, red_logits = model(features)                                  # [B,34,5], [B,3,2]
 
         loss_ce = F.cross_entropy(logits.reshape(-1, model.n_count_cls), labels.reshape(-1))
 
-        # global sum ソフト制約: Σ E[count_i] ≈ Σ label_i (実際の手牌枚数)
-        probs          = F.softmax(logits, dim=-1)                      # [B, 34, 5]
-        expected_total = (probs * count_vals).sum(-1).sum(-1)           # [B]
-        target_total   = labels.float().sum(-1)                         # [B]
+        # global sum ソフト制約
+        probs          = F.softmax(logits, dim=-1)                            # [B, 34, 5]
+        expected_total = (probs * count_vals).sum(-1).sum(-1)                 # [B]
+        target_total   = labels.float().sum(-1)                               # [B]
         loss_global    = F.mse_loss(expected_total, target_total)
 
-        loss = loss_ce + LAMBDA_GLOBAL_SUM * loss_global
+        # 赤牌 CE 損失
+        loss_red_ce = F.cross_entropy(red_logits.reshape(-1, 2), labels_red.reshape(-1))
+
+        # 整合性制約: P(赤持ち) ≤ P(5を1枚以上持つ)
+        prob_has_red = F.softmax(red_logits, dim=-1)[:, :, 1]                # [B, 3]
+        prob_cnt_ge1 = 1 - F.softmax(logits[:, five_idx, :], dim=-1)[:, :, 0]  # [B, 3]
+        loss_red_cons = F.relu(prob_has_red - prob_cnt_ge1).mean()
+
+        loss = (loss_ce
+                + LAMBDA_GLOBAL_SUM * loss_global
+                + LAMBDA_RED_CE     * loss_red_ce
+                + LAMBDA_RED_CONS   * loss_red_cons)
         loss.backward()
         optimizer.step()
 
@@ -173,9 +205,9 @@ def eval_epoch(model, loader, device):
     total_loss = 0.0
     correct = 0
     total   = 0
-    for features, labels in loader:
+    for features, labels, labels_red in loader:
         features, labels = features.to(device), labels.to(device)
-        logits = model(features)
+        logits, _ = model(features)
         loss = F.cross_entropy(logits.reshape(-1, model.n_count_cls), labels.reshape(-1))
         total_loss += loss.item() * len(features)
         preds = logits.argmax(dim=-1)
@@ -200,7 +232,11 @@ def main():
     sample_dim = len(all_data[0]["features"])
     if sample_dim != CONFIG["input_dim"]:
         print(f"次元数不一致: expected {CONFIG['input_dim']}, got {sample_dim}")
-        print("extract_features.js を再実行してください")
+        print("add_yaku_features.py を実行してから再実行してください")
+        sys.exit(1)
+
+    if "label_red" not in all_data[0]:
+        print("label_red フィールドがありません。extract_features.js を再実行してください")
         sys.exit(1)
 
     random.seed(42)
@@ -238,7 +274,7 @@ def main():
         train_ce, train_gs = train_epoch(model, train_loader, optimizer, device)
         val_loss, val_acc  = eval_epoch(model, val_loader, device)
         scheduler.step(val_loss)
-        print(f"epoch {epoch:3d}  train_loss={train_ce:.4f}  gs={train_gs:.3f}  val_loss={val_loss:.4f}  val_acc={val_acc:.4f}")
+        print(f"epoch {epoch:3d}  train_loss={train_ce:.4f}  gs={train_gs:.3f}  val_loss={val_loss:.4f}  val_acc={val_acc:.4f}", flush=True)
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -264,8 +300,12 @@ def main():
         model, dummy,
         str(MODEL_DIR / "model.onnx"),
         input_names=["features"],
-        output_names=["logits"],
-        dynamic_axes={"features": {0: "batch_size"}, "logits": {0: "batch_size"}},
+        output_names=["logits", "red_logits"],
+        dynamic_axes={
+            "features":   {0: "batch_size"},
+            "logits":     {0: "batch_size"},
+            "red_logits": {0: "batch_size"},
+        },
         opset_version=17,
         dynamo=False,
     )

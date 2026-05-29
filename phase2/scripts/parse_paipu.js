@@ -49,6 +49,45 @@ function collect_xml_files(src) {
         .map(f => path.join(src, f));
 }
 
+// ---- ポンスルー検出用ヘルパー ----
+
+function normalize_tile(p) {
+    const base = p.replace(/[_*+=\-]/g, '');
+    return base.replace(/^([mps])0$/, '$15');
+}
+
+function count_tile_in_shoupai(shoupai, tile_norm) {
+    if (!shoupai) return 0;
+    const hand_str = shoupai.toString().split(',')[0];
+    let count = 0, suit = '';
+    for (const c of hand_str) {
+        if ('mpsz'.includes(c)) { suit = c; continue; }
+        const n = parseInt(c);
+        if (isNaN(n)) continue;
+        if (`${suit}${n === 0 ? 5 : n}` === tile_norm) count++;
+    }
+    return count;
+}
+
+function is_pon_of(meld_str, tile_norm) {
+    if (!meld_str || !meld_str.match(/^[mpsz]\d{3}[\+\=\-]\d$/)) return false;
+    const suit = meld_str[0];
+    const n    = parseInt(meld_str[1]);
+    return `${suit}${n === 0 ? 5 : n}` === tile_norm;
+}
+
+// ---- 局の役情報を収集（バックフィル用） ----
+
+function get_yaku_l(round_log) {
+    const yaku_l = [[], [], [], []];
+    for (const ev of round_log) {
+        if (!ev.hule) continue;
+        const l = ev.hule.l;
+        yaku_l[l] = (ev.hule.hupai || []).map(h => h.name || h);
+    }
+    return yaku_l;
+}
+
 // ---- 局の最終得失点を収集 ----
 
 function get_round_fenpei(round_log, board) {
@@ -72,12 +111,15 @@ function parse_round(paipu_id, paipu, round_idx, board) {
     const records   = [];
 
     // board はすでに前の局の状態。qipai で初期化される。
-    // 捨て牌・リーチをローカルで追跡
-    const discards_l = [[], [], [], []];
-    const riichi_l   = [false, false, false, false];
+    // 捨て牌・リーチ・ポンスルーをローカルで追跡
+    const discards_l   = [[], [], [], []];
+    const riichi_l     = [false, false, false, false];
+    const pon_passes_l = [[], [], [], []];
+    let   total_discards = 0;
 
-    // 局末の得失点（先に収集してすべてのレコードに付与）
+    // 局末の得失点・役情報（先に収集してすべてのレコードに付与）
     const round_fenpei = get_round_fenpei(round_log, board);
+    const yaku_l       = get_yaku_l(round_log);
 
     // 対局終了結果
     const final_points = paipu.point ? paipu.point.map(p => parseFloat(p)) : [0, 0, 0, 0];
@@ -92,6 +134,24 @@ function parse_round(paipu_id, paipu, round_idx, board) {
         if (key === 'dapai') {
             discards_l[val.l].push(val.p);
             if (val.p.endsWith('*')) riichi_l[val.l] = true;
+
+            // ポンスルー検出: 他家が2枚以上持ちなのにポンしなかったケース
+            const tile_norm = normalize_tile(val.p);
+            const next_ev   = round_log[event_idx + 1];
+            const ponner_l  = (next_ev?.fulou && is_pon_of(next_ev.fulou.m, tile_norm))
+                ? next_ev.fulou.l : -1;
+
+            for (let l = 0; l < 4; l++) {
+                if (l === val.l)       continue;
+                if (riichi_l[l])       continue;
+                if (!board.shoupai[l]) continue;
+                if (count_tile_in_shoupai(board.shoupai[l], tile_norm) >= 2) {
+                    if (l !== ponner_l) {
+                        pon_passes_l[l].push({ p: tile_norm, t: total_discards });
+                    }
+                }
+            }
+            total_discards++;
         }
 
         // zimo / gangzimo の後 → 打牌決定点としてレコード化
@@ -148,6 +208,8 @@ function parse_round(paipu_id, paipu, round_idx, board) {
                 round_fenpei,
                 final_points,
                 final_ranks,
+                pon_passes_l: pon_passes_l.map(a => [...a]),
+                yaku_l,
             });
             continue;
         }

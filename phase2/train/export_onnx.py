@@ -13,7 +13,7 @@ config = json.loads((MODEL_DIR / "config.json").read_text())
 class HandInferenceV6(nn.Module):
     def __init__(self, input_dim, d_model, nhead, num_layers, n_pai, n_count_cls, dropout):
         super().__init__()
-        self.n_pai = n_pai
+        self.n_pai       = n_pai
         self.n_count_cls = n_count_cls
         self.global_encoder = nn.Sequential(
             nn.Linear(input_dim, 256),
@@ -21,7 +21,7 @@ class HandInferenceV6(nn.Module):
             nn.ReLU(),
             nn.Linear(256, d_model),
         )
-        self.tile_embed = nn.Embedding(n_pai, d_model)
+        self.tile_embed   = nn.Embedding(n_pai, d_model)
         self.visible_proj = nn.Linear(1, d_model, bias=False)
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=nhead,
@@ -31,9 +31,11 @@ class HandInferenceV6(nn.Module):
             norm_first=True,
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.head = nn.Linear(d_model, n_count_cls)
-        self.register_buffer("tile_ids",    torch.arange(n_pai))
-        self.register_buffer("count_range", torch.arange(n_count_cls))
+        self.head     = nn.Linear(d_model, n_count_cls)
+        self.red_head = nn.Linear(d_model, 2)
+        self.register_buffer("tile_ids",     torch.arange(n_pai))
+        self.register_buffer("count_range",  torch.arange(n_count_cls))
+        self.register_buffer("red_tile_idx", torch.tensor([4, 13, 22]))
 
     def forward(self, x):
         g = self.global_encoder(x)
@@ -48,7 +50,11 @@ class HandInferenceV6(nn.Module):
         hidden_remaining = (4 - vis_raw).clamp(min=0)
         mask = self.count_range > hidden_remaining.unsqueeze(-1)
         logits = logits.masked_fill(mask, float('-inf'))
-        return logits
+
+        red_tokens = out[:, self.red_tile_idx, :]
+        red_logits = self.red_head(red_tokens)
+
+        return logits, red_logits
 
 
 model = HandInferenceV6(
@@ -68,8 +74,12 @@ torch.onnx.export(
     model, dummy,
     str(MODEL_DIR / "model.onnx"),
     input_names=["features"],
-    output_names=["logits"],
-    dynamic_axes={"features": {0: "batch_size"}, "logits": {0: "batch_size"}},
+    output_names=["logits", "red_logits"],
+    dynamic_axes={
+        "features":   {0: "batch_size"},
+        "logits":     {0: "batch_size"},
+        "red_logits": {0: "batch_size"},
+    },
     opset_version=17,
     dynamo=False,
 )
