@@ -251,6 +251,14 @@
         return counts.map(c => c / 4);
     }
 
+    function red_discard_signal(discards, riichi_flag) {
+        // 立直なし + 赤5切り = その5を持っていない可能性大（3次元: 5m/5p/5s）
+        if (riichi_flag) return [0, 0, 0];
+        return ['m0', 'p0', 's0'].map(r =>
+            discards.some(p => p.replace(/[_*+=\-]/g, '') === r) ? 1 : 0
+        );
+    }
+
     function meld_type_features_3players(state) {
         // viewer以外の3プレイヤーの副露タイプ: (n_chi, n_pon, n_kan, has_meld) × 3 = 12次元
         const vec = [];
@@ -296,7 +304,7 @@
     }
 
     function make_hi_features(state, target_l) {
-        // v2: 219次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+self_discard(44)+self_meld(38)+visible_counts(34)
+        // v6: 222次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+self_discard(44)+self_meld(38)+visible_counts(34)+red_discard_signal(3)
         return new Float32Array([
             ...discard_features(state.discards_l[target_l]),
             ...meld_features(state.melds_l[target_l]),
@@ -306,6 +314,7 @@
             ...discard_features(state.discards_l[state.l]),
             ...meld_features(state.melds_l[state.l]),
             ...visible_counts_vec(state),
+            ...red_discard_signal(state.discards_l[target_l], state.riichi_l[target_l]),
         ]);
     }
 
@@ -395,7 +404,7 @@
     async function load_sessions() {
         const s = {};
         const models = [
-            ['hand_inference', MODEL_BASE + 'hand_inference/v5/model.onnx'],
+            ['hand_inference', MODEL_BASE + 'hand_inference/v6/model.onnx'],
             ['behavior_clone', MODEL_BASE + 'behavior_clone/v2/model.onnx'],
             ['value_function', MODEL_BASE + 'value_function/v2/model.onnx'],
         ];

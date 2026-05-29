@@ -1,16 +1,16 @@
-"""保存済み model.pt を ONNX にエクスポートする (v5用)"""
+"""保存済み model.pt を ONNX にエクスポートする (v6用)"""
 import json
 import torch
 import torch.nn as nn
 from pathlib import Path
 
-MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v5"
+MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v6"
 VISIBLE_OFFSET = 185
 
 config = json.loads((MODEL_DIR / "config.json").read_text())
 
 
-class HandInferenceV5(nn.Module):
+class HandInferenceV6(nn.Module):
     def __init__(self, input_dim, d_model, nhead, num_layers, n_pai, n_count_cls, dropout):
         super().__init__()
         self.n_pai = n_pai
@@ -32,19 +32,26 @@ class HandInferenceV5(nn.Module):
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.head = nn.Linear(d_model, n_count_cls)
-        self.register_buffer("tile_ids", torch.arange(n_pai))
+        self.register_buffer("tile_ids",    torch.arange(n_pai))
+        self.register_buffer("count_range", torch.arange(n_count_cls))
 
     def forward(self, x):
         g = self.global_encoder(x)
         tile_emb = self.tile_embed(self.tile_ids)
-        vis = x[:, VISIBLE_OFFSET:].unsqueeze(-1)
+        vis = x[:, VISIBLE_OFFSET:VISIBLE_OFFSET + self.n_pai].unsqueeze(-1)
         vis_emb = self.visible_proj(vis)
         tokens = g.unsqueeze(1) + tile_emb.unsqueeze(0) + vis_emb
-        out = self.transformer(tokens)
-        return self.head(out)
+        out    = self.transformer(tokens)
+        logits = self.head(out)
+
+        vis_raw = (x[:, VISIBLE_OFFSET:VISIBLE_OFFSET + self.n_pai] * 4).round().long().clamp(0, 4)
+        hidden_remaining = (4 - vis_raw).clamp(min=0)
+        mask = self.count_range > hidden_remaining.unsqueeze(-1)
+        logits = logits.masked_fill(mask, float('-inf'))
+        return logits
 
 
-model = HandInferenceV5(
+model = HandInferenceV6(
     input_dim   = config["input_dim"],
     d_model     = config["d_model"],
     nhead       = config["nhead"],

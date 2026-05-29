@@ -1,18 +1,21 @@
 """
-手牌類推モデル v5: Transformer self-attention across 34 tile tokens
+手牌類推モデル v6: v5 + global sum ソフト制約 + 4枚ハードマスク + 赤牌捨てシグナル
 
-入力 (219次元, v2/v4と同一):
+入力 (222次元):
   target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
-  self_discard(44) + self_meld(38) + visible_counts(34)
+  self_discard(44) + self_meld(38) + visible_counts(34) + red_discard_signal(3)
 
-アーキテクチャ:
-  1. global_encoder (219->256->d_model + BN): 全特徴量のグローバル圧縮
+アーキテクチャ (v5と同一):
+  1. global_encoder (222->256->d_model + BN): 全特徴量のグローバル圧縮
   2. tile_embed (Embedding[34, d_model]): タイル固有の学習表現
   3. visible_proj (Linear[1, d_model]): visible_count のタイル別情報
   4. TransformerEncoder (nhead=4, num_layers=3, Pre-LN): タイル間通信
   5. Per-tile head (Linear[d_model, 5]): 各タイルの枚数クラス予測
 
-出力: (B, 34, 5)
+損失関数:
+  loss = CE + λ * MSE(Σ E[count_i], Σ label_i)   (λ = LAMBDA_GLOBAL_SUM)
+
+出力: (B, 34, 5)  ← forward内で4枚ハードマスク適用済み
 """
 
 import json
@@ -29,10 +32,10 @@ from torch.utils.data import Dataset, DataLoader
 # ---- 設定 ----
 
 DATA_DIR  = Path(__file__).parent.parent / "data" / "features"
-MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v5"
+MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v6"
 
 CONFIG = {
-    "input_dim":    219,
+    "input_dim":    222,
     "d_model":      128,
     "nhead":        4,
     "num_layers":   3,
@@ -46,8 +49,11 @@ CONFIG = {
     "early_stop_patience": 7,
 }
 
-# visible_counts は219次元の末尾34次元 (index 185-218)
+# visible_counts は222次元の185番目から34次元 (index 185-218)
 VISIBLE_OFFSET = 185
+
+# global sum 損失の重み: loss = CE + λ * MSE(expected_total, label_total)
+LAMBDA_GLOBAL_SUM = 0.05
 
 
 # ---- データセット ----
@@ -68,13 +74,14 @@ class HandInferenceDataset(Dataset):
         return self.features[idx], self.labels[idx]
 
 
-# ---- モデル (Transformer) ----
+# ---- モデル (Transformer + hard mask) ----
 
-class HandInferenceV5(nn.Module):
+class HandInferenceV6(nn.Module):
     """
-    34タイルをトークンとして扱い、self-attention で相互参照しながら枚数予測する。
+    v5 Transformer + 4枚ハードマスク (forward内)。
+    アーキテクチャはv5と同一; input_dim=222 (v5の219 + red_discard_signal 3次元)。
 
-    各タイルトークン = GlobalEncoder(219次元) + TileEmbed(tile_id) + VisibleProj(visible_count_i)
+    各タイルトークン = GlobalEncoder(222次元) + TileEmbed(tile_id) + VisibleProj(visible_count_i)
     """
 
     def __init__(self, input_dim, d_model, nhead, num_layers, n_pai, n_count_cls, dropout):
@@ -82,7 +89,6 @@ class HandInferenceV5(nn.Module):
         self.n_pai = n_pai
         self.n_count_cls = n_count_cls
 
-        # 全219次元をd_modelに圧縮 (BatchNorm1d で安定化)
         self.global_encoder = nn.Sequential(
             nn.Linear(input_dim, 256),
             nn.BatchNorm1d(256),
@@ -90,13 +96,9 @@ class HandInferenceV5(nn.Module):
             nn.Linear(256, d_model),
         )
 
-        # タイルID埋め込み [34, d_model]
         self.tile_embed = nn.Embedding(n_pai, d_model)
-
-        # visible_count (スカラー1次元) → d_model
         self.visible_proj = nn.Linear(1, d_model, bias=False)
 
-        # Transformer (Pre-LayerNorm, batch_first=True)
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
@@ -106,44 +108,63 @@ class HandInferenceV5(nn.Module):
             norm_first=True,
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-
-        # Per-tile分類ヘッド
         self.head = nn.Linear(d_model, n_count_cls)
 
-        # ONNX export時に torch.arange をトレース可能にするためbufferに登録
-        self.register_buffer("tile_ids", torch.arange(n_pai))
+        self.register_buffer("tile_ids",    torch.arange(n_pai))
+        self.register_buffer("count_range", torch.arange(n_count_cls))
 
     def forward(self, x):
-        # x: [B, 219]
-        g = self.global_encoder(x)            # [B, d_model]
+        # x: [B, 222]
+        g = self.global_encoder(x)                                     # [B, d_model]
 
-        tile_emb = self.tile_embed(self.tile_ids)        # [34, d_model]
+        tile_emb = self.tile_embed(self.tile_ids)                       # [34, d_model]
+        vis = x[:, VISIBLE_OFFSET:VISIBLE_OFFSET + self.n_pai].unsqueeze(-1)  # [B, 34, 1]
+        vis_emb = self.visible_proj(vis)                                # [B, 34, d_model]
 
-        # visible_counts: 末尾34次元を [B, 34, 1] に整形
-        vis = x[:, VISIBLE_OFFSET:].unsqueeze(-1)         # [B, 34, 1]
-        vis_emb = self.visible_proj(vis)                   # [B, 34, d_model]
+        tokens = g.unsqueeze(1) + tile_emb.unsqueeze(0) + vis_emb      # [B, 34, d_model]
+        out    = self.transformer(tokens)                               # [B, 34, d_model]
+        logits = self.head(out)                                         # [B, 34, 5]
 
-        # タイルトークン: グローバル文脈 + タイルID + visible_count
-        tokens = g.unsqueeze(1) + tile_emb.unsqueeze(0) + vis_emb  # [B, 34, d_model]
+        # 4枚ハードマスク: visible_counts * 4 = 見えている枚数（自手牌含む）
+        # count > 4 - visible は物理的に不可能 → -inf で強制除外
+        vis_raw = (x[:, VISIBLE_OFFSET:VISIBLE_OFFSET + self.n_pai] * 4).round().long().clamp(0, 4)
+        hidden_remaining = (4 - vis_raw).clamp(min=0)                  # [B, 34]
+        mask = self.count_range > hidden_remaining.unsqueeze(-1)        # [B, 34, 5]
+        logits = logits.masked_fill(mask, float('-inf'))
 
-        out = self.transformer(tokens)         # [B, 34, d_model]
-        return self.head(out)                  # [B, 34, 5]
+        return logits                                                   # [B, 34, 5]
 
 
 # ---- 学習・評価 ----
 
 def train_epoch(model, loader, optimizer, device):
     model.train()
-    total_loss = 0.0
+    total_ce     = 0.0
+    total_global = 0.0
+    count_vals = torch.arange(model.n_count_cls, device=device, dtype=torch.float32)
+
     for features, labels in loader:
         features, labels = features.to(device), labels.to(device)
         optimizer.zero_grad()
-        logits = model(features)
-        loss = F.cross_entropy(logits.reshape(-1, model.n_count_cls), labels.reshape(-1))
+        logits = model(features)                                        # [B, 34, 5]
+
+        loss_ce = F.cross_entropy(logits.reshape(-1, model.n_count_cls), labels.reshape(-1))
+
+        # global sum ソフト制約: Σ E[count_i] ≈ Σ label_i (実際の手牌枚数)
+        probs          = F.softmax(logits, dim=-1)                      # [B, 34, 5]
+        expected_total = (probs * count_vals).sum(-1).sum(-1)           # [B]
+        target_total   = labels.float().sum(-1)                         # [B]
+        loss_global    = F.mse_loss(expected_total, target_total)
+
+        loss = loss_ce + LAMBDA_GLOBAL_SUM * loss_global
         loss.backward()
         optimizer.step()
-        total_loss += loss.item() * len(features)
-    return total_loss / len(loader.dataset)
+
+        total_ce     += loss_ce.item()     * len(features)
+        total_global += loss_global.item() * len(features)
+
+    n = len(loader.dataset)
+    return total_ce / n, total_global / n
 
 
 @torch.no_grad()
@@ -196,7 +217,7 @@ def main():
     val_loader   = DataLoader(HandInferenceDataset(val_data),   batch_size=CONFIG["batch_size"], shuffle=False, num_workers=0)
     test_loader  = DataLoader(HandInferenceDataset(test_data),  batch_size=CONFIG["batch_size"], shuffle=False, num_workers=0)
 
-    model = HandInferenceV5(
+    model = HandInferenceV6(
         input_dim   = CONFIG["input_dim"],
         d_model     = CONFIG["d_model"],
         nhead       = CONFIG["nhead"],
@@ -214,10 +235,10 @@ def main():
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
     for epoch in range(1, CONFIG["epochs"] + 1):
-        train_loss = train_epoch(model, train_loader, optimizer, device)
-        val_loss, val_acc = eval_epoch(model, val_loader, device)
+        train_ce, train_gs = train_epoch(model, train_loader, optimizer, device)
+        val_loss, val_acc  = eval_epoch(model, val_loader, device)
         scheduler.step(val_loss)
-        print(f"epoch {epoch:3d}  train_loss={train_loss:.4f}  val_loss={val_loss:.4f}  val_acc={val_acc:.4f}")
+        print(f"epoch {epoch:3d}  train_loss={train_ce:.4f}  gs={train_gs:.3f}  val_loss={val_loss:.4f}  val_acc={val_acc:.4f}")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss

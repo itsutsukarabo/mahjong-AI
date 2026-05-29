@@ -265,6 +265,17 @@ function meld_type_single(melds) {
 }
 
 /**
+ * ターゲットプレイヤーが立直なしで赤牌を捨てたか（3次元: 5m/5p/5s）
+ * 立直なし + 赤5切り = その5を1枚も持っていない可能性が非常に高い
+ */
+function red_discard_signal(discards, riichi_flag) {
+    if (riichi_flag) return [0, 0, 0];
+    return ['m0', 'p0', 's0'].map(r =>
+        discards.some(p => p.replace(/[_*+=\-]/g, '') === r) ? 1 : 0
+    );
+}
+
+/**
  * 全プレイヤーの捨て牌・副露 + viewer自身の手牌から「見え牌枚数」を計算（34次元、/4 正規化）
  * 相手が持てない枚数の上限を示す情報として手牌推定に使用する
  */
@@ -316,11 +327,11 @@ function others_meld_type_features(rec) {
 // ---- 3モデル用の特徴量・ラベル生成 ----
 
 /**
- * 手牌類推モデル用 (v2: flat 219次元)
+ * 手牌類推モデル用 (v6: flat 222次元)
  * 視点プレイヤー l から見た 対象プレイヤー target_l の特徴量 + ラベル
  *
  * target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
- * self_discard(44) + self_meld(38) + visible_counts(34) = 219次元
+ * self_discard(44) + self_meld(38) + visible_counts(34) + red_discard_signal(3) = 222次元
  */
 function make_hand_inference_sample(rec, target_l) {
     const features = [
@@ -332,7 +343,8 @@ function make_hand_inference_sample(rec, target_l) {
         ...discard_features(rec.discards_l[rec.l]),      // 44
         ...meld_features(rec.melds_l[rec.l]),            // 38
         ...visible_counts_vec(rec, rec.l),               // 34
-    ];  // 219次元
+        ...red_discard_signal(rec.discards_l[target_l], rec.riichi_l[target_l]),  // 3
+    ];  // 222次元
 
     const hand_vec_target = encode_hand(rec.hands_l[target_l]);
     return { features, label_hand: hand_vec_target, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
