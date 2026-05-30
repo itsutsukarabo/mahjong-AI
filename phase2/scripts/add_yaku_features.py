@@ -26,10 +26,10 @@ YAKU_MODEL_DIR = Path(__file__).parent.parent / "models" / "yaku_inference" / "v
 INPUT_PATH  = FEATURES_DIR / "hand_inference.ndjson"
 OUTPUT_PATH = FEATURES_DIR / "hand_inference.ndjson"
 
-YAKU_INPUT_DIM  = 92
+YAKU_INPUT_DIM  = 108
 YAKU_OUTPUT_DIM = 15
-EXPECTED_INPUT_DIM  = 344
-EXPECTED_OUTPUT_DIM = 359
+EXPECTED_INPUT_DIM  = 349
+EXPECTED_OUTPUT_DIM = 364
 BATCH_SIZE = 1024
 
 

@@ -150,10 +150,12 @@ function meld_features(melds) {
 
 /**
  * 点数状況から特徴量ベクトルを生成
+ * player_l: 省略時は rec.l (viewer) を使用
  * サイズ: 4(点数正規化) + 4(着順ボーダーとの差) + 3(場況) = 11
  */
-function score_features(rec) {
-    const { scores, player_ids, l, zhuangfeng, jushu, changbang } = rec;
+function score_features(rec, player_l) {
+    const { scores, player_ids, zhuangfeng, jushu, changbang } = rec;
+    const l         = (player_l !== undefined) ? player_l : rec.l;
     const player_id = player_ids[l];
     const my_score  = scores[player_id];
 
@@ -176,6 +178,17 @@ function score_features(rec) {
     vec[idx++] = Math.min(changbang, 8) / 8;  // 本場（上限8で正規化）
 
     return vec;
+}
+
+/**
+ * 自風・場風の特徴量ベクトル
+ * サイズ: 4(自風 one-hot: 東南西北) + 1(場風: 東=0/南=1) = 5
+ */
+function wind_features(rec, player_l) {
+    const jikaze = (player_l - rec.jushu + 4) % 4;
+    const oh = [0, 0, 0, 0];
+    oh[jikaze] = 1;
+    return [...oh, rec.zhuangfeng];
 }
 
 /**
@@ -396,12 +409,12 @@ function others_meld_type_features(rec) {
 // ---- 3モデル用の特徴量・ラベル生成 ----
 
 /**
- * 手牌類推モデル用 (v6: flat 344次元 ※学習時は add_yaku_features.py で355次元になる)
+ * 手牌類推モデル用 (v6: flat 349次元 ※学習時は add_yaku_features.py で364次元になる)
  * 視点プレイヤー l から見た 対象プレイヤー target_l の特徴量 + ラベル
  *
  * target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
  * self_discard(44) + self_meld(38) + visible_counts(34) + red_discard_signal(3) +
- * other1_discard(44) + other2_discard(44) + pass_pon_signal(34) = 344次元
+ * other1_discard(44) + other2_discard(44) + pass_pon_signal(34) + wind(5) = 349次元
  */
 function make_hand_inference_sample(rec, target_l) {
     // viewer でも target でもない2プレイヤーを相対順で取得
@@ -422,7 +435,8 @@ function make_hand_inference_sample(rec, target_l) {
         ...discard_features(rec.discards_l[other_ls[0]]),  // 44
         ...discard_features(rec.discards_l[other_ls[1]]),  // 44
         ...pass_pon_signal(rec.pon_passes_l?.[target_l]),   // 34
-    ];  // 344次元
+        ...wind_features(rec, target_l),                    // 5
+    ];  // 349次元
 
     const { counts: hand_vec_target, red: red_target } = encode_hand_red(rec.hands_l[target_l]);
     return { features, label_hand: hand_vec_target, label_red: red_target, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
@@ -441,7 +455,9 @@ function make_yaku_sample(rec) {
         ...meld_features(rec.melds_l[rec.l]),         // 38
         riichi_l_val(rec.riichi_l[rec.l]),            // 1
         ...game_state_features(rec),                  // 9
-    ];  // 92次元
+        ...score_features(rec),                       // 11
+        ...wind_features(rec, rec.l),                 // 5
+    ];  // 108次元
 
     const yaku     = rec.yaku_l     ? (rec.yaku_l[rec.l]     || []) : [];
     const win_suit = rec.win_suit_l ? (rec.win_suit_l[rec.l] || '') : '';

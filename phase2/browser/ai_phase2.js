@@ -102,8 +102,9 @@
         return vec;  // 38次元
     }
 
-    function score_features(state) {
-        const { scores, player_ids, l, zhuangfeng, jushu, changbang } = state;
+    function score_features(state, player_l) {
+        const { scores, player_ids, zhuangfeng, jushu, changbang } = state;
+        const l        = (player_l !== undefined) ? player_l : state.l;
         const my_score = scores[player_ids[l]];
         const vec = new Array(11).fill(0);
         let idx = 0;
@@ -117,6 +118,14 @@
         vec[idx++] = jushu / 4;
         vec[idx++] = Math.min(changbang, 8) / 8;
         return vec;  // 11次元
+    }
+
+    function wind_features(state, player_l) {
+        // 自風 one-hot [東, 南, 西, 北] (4次元) + 場風(東=0/南=1) (1次元) = 5次元
+        const jikaze = (player_l - state.jushu + 4) % 4;
+        const oh = [0, 0, 0, 0];
+        oh[jikaze] = 1;
+        return [...oh, state.zhuangfeng];
     }
 
     function game_state_features(state) {
@@ -328,19 +337,21 @@
     }
 
     function make_yaku_features(state, target_l) {
-        // 役推定: 92次元 = target_discard(44)+target_meld(38)+riichi(1)+game_state(9)
+        // 役推定: 108次元 = target_discard(44)+target_meld(38)+riichi(1)+game_state(9)+score(11)+wind(5)
         return new Float32Array([
             ...discard_features(state.discards_l[target_l]),
             ...meld_features(state.melds_l[target_l]),
             state.riichi_l[target_l] ? 1 : 0,
             ...game_state_features(state),
+            ...score_features(state, target_l),
+            ...wind_features(state, target_l),
         ]);
     }
 
     function make_hi_features(state, target_l, yaku_probs) {
-        // v6: 359次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+
+        // v6: 364次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+
         //     self_discard(44)+self_meld(38)+visible_counts(34)+red_discard_signal(3)+
-        //     other1_discard(44)+other2_discard(44)+pass_pon_signal(34)+yaku_prob(15)
+        //     other1_discard(44)+other2_discard(44)+pass_pon_signal(34)+wind(5)+yaku_prob(15)
         const other_ls = [1, 2, 3]
             .map(rel => (state.l + rel) % 4)
             .filter(l => l !== target_l);
@@ -357,6 +368,7 @@
             ...discard_features(state.discards_l[other_ls[0]]),         // 44
             ...discard_features(state.discards_l[other_ls[1]]),         // 44
             ...pass_pon_signal_from_state(state, target_l),             // 34
+            ...wind_features(state, target_l),                          // 5
             ...(yaku_probs || new Array(15).fill(0)),                   // 15
         ]);
     }

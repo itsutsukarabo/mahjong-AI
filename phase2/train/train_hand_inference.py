@@ -2,14 +2,15 @@
 手牌類推モデル v6: v5 + global sum ソフト制約 + 4枚ハードマスク + 赤牌捨てシグナル
                       + 他家捨て牌 + 赤牌所持出力 + ポンスルー信号 + 役推定特徴量
 
-入力 (359次元):
+入力 (364次元):
   target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
   self_discard(44)   + self_meld(38)   + visible_counts(34) +
   red_discard_signal(3)   [index 219:222] +
   other1_discard(44)      [index 222:266] +
   other2_discard(44)      [index 266:310] +
   pass_pon_signal(34)     [index 310:344] +
-  yaku_prob(15)           [index 344:359]
+  wind(5)                 [index 344:349] +
+  yaku_prob(15)           [index 349:364]
 
 アーキテクチャ (v5と同一):
   1. global_encoder (355->256->d_model + BN): 全特徴量のグローバル圧縮
@@ -44,7 +45,7 @@ DATA_DIR  = Path(__file__).parent.parent / "data" / "features"
 MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v6"
 
 CONFIG = {
-    "input_dim":    359,
+    "input_dim":    364,
     "d_model":      128,
     "nhead":        4,
     "num_layers":   3,
