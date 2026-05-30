@@ -338,9 +338,9 @@
     }
 
     function make_hi_features(state, target_l, yaku_probs) {
-        // v6: 355次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+
+        // v6: 359次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+
         //     self_discard(44)+self_meld(38)+visible_counts(34)+red_discard_signal(3)+
-        //     other1_discard(44)+other2_discard(44)+pass_pon_signal(34)+yaku_prob(11)
+        //     other1_discard(44)+other2_discard(44)+pass_pon_signal(34)+yaku_prob(15)
         const other_ls = [1, 2, 3]
             .map(rel => (state.l + rel) % 4)
             .filter(l => l !== target_l);
@@ -357,7 +357,7 @@
             ...discard_features(state.discards_l[other_ls[0]]),         // 44
             ...discard_features(state.discards_l[other_ls[1]]),         // 44
             ...pass_pon_signal_from_state(state, target_l),             // 34
-            ...(yaku_probs || new Array(11).fill(0)),                   // 11
+            ...(yaku_probs || new Array(15).fill(0)),                   // 15
         ]);
     }
 

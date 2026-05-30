@@ -1,0 +1,18 @@
+{
+  "test_loss": 0.19168425381061857,
+  "test_macro_acc": 0.9208839535713196,
+  "config": {
+    "input_dim": 92,
+    "n_yaku": 11,
+    "hidden": [
+      256,
+      128
+    ],
+    "dropout": 0.2,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch_size": 512,
+    "epochs": 40,
+    "early_stop_patience": 7
+  }
+}

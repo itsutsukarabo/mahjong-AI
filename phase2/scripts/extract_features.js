@@ -302,25 +302,35 @@ function pass_pon_signal(pon_passes, max_discards = 70) {
 
 // ---- 役推定用エンコーディング ----
 
-// 11クラス: tanyao/honitsu/chinitsu/yakuhai_haku/yakuhai_hatsu/yakuhai_chun/
-//           yakuhai_ba/yakuhai_ji/pinfu/chanta/riichi
+// 15クラス:
+//   0:tanyao / 1:honitsu / 2:chinitsu /
+//   3:yakuhai_haku / 4:yakuhai_hatsu / 5:yakuhai_chun /
+//   6:yakuhai_ba / 7:yakuhai_ji /
+//   8:chanta / 9:riichi / 10:chiitoi / 11:kokushi /
+//   12:suit_man / 13:suit_pin / 14:suit_sou  (honitsu/chinitsu のスート)
+// ※ pinfu は riichi との相関が高すぎるため除外
 const YAKU_LABELS = [
-    ns => ns.includes('断幺九'),
-    ns => ns.includes('混一色'),
-    ns => ns.includes('清一色'),
-    ns => ns.includes('役牌 白'),
-    ns => ns.includes('役牌 發'),
-    ns => ns.includes('役牌 中'),
-    ns => ns.some(n => n.startsWith('場風')),
-    ns => ns.some(n => n.startsWith('自風')),
-    ns => ns.includes('平和'),
-    ns => ns.includes('混全帯幺九') || ns.includes('純全帯幺九'),
-    ns => ns.includes('立直') || ns.includes('両立直'),
+    (ns, _s) => ns.includes('断幺九'),
+    (ns, _s) => ns.includes('混一色'),
+    (ns, _s) => ns.includes('清一色'),
+    (ns, _s) => ns.includes('役牌 白'),
+    (ns, _s) => ns.includes('役牌 發'),
+    (ns, _s) => ns.includes('役牌 中'),
+    (ns, _s) => ns.some(n => n.startsWith('場風')),
+    (ns, _s) => ns.some(n => n.startsWith('自風')),
+    (ns, _s) => ns.includes('混全帯幺九') || ns.includes('純全帯幺九'),
+    (ns, _s) => ns.includes('立直') || ns.includes('両立直'),
+    (ns, _s) => ns.includes('七対子'),
+    (ns, _s) => ns.includes('国士無双') || ns.includes('国士無双１３面'),
+    (ns, s)  => (ns.includes('混一色') || ns.includes('清一色')) && s === 'm',
+    (ns, s)  => (ns.includes('混一色') || ns.includes('清一色')) && s === 'p',
+    (ns, s)  => (ns.includes('混一色') || ns.includes('清一色')) && s === 's',
 ];
 
-function encode_yaku(hupai_list) {
+function encode_yaku(hupai_list, win_suit) {
     const names = (hupai_list || []).map(h => h.name || h);
-    return YAKU_LABELS.map(fn => fn(names) ? 1 : 0);
+    const s = win_suit || '';
+    return YAKU_LABELS.map(fn => fn(names, s) ? 1 : 0);
 }
 
 /**
@@ -433,8 +443,9 @@ function make_yaku_sample(rec) {
         ...game_state_features(rec),                  // 9
     ];  // 92次元
 
-    const yaku = rec.yaku_l[rec.l] || [];
-    const label_yaku = encode_yaku(yaku);
+    const yaku     = rec.yaku_l     ? (rec.yaku_l[rec.l]     || []) : [];
+    const win_suit = rec.win_suit_l ? (rec.win_suit_l[rec.l] || '') : '';
+    const label_yaku = encode_yaku(yaku, win_suit);
     const won = label_yaku.some(v => v > 0);
     return { features, label_yaku, won, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx } };
 }

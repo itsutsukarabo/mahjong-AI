@@ -29,7 +29,7 @@ MODEL_DIR = Path(__file__).parent.parent / "models" / "yaku_inference" / "v1"
 
 CONFIG = {
     "input_dim":  92,
-    "n_yaku":     11,
+    "n_yaku":     15,
     "hidden":     [256, 128],
     "dropout":    0.2,
     "lr":         1e-3,

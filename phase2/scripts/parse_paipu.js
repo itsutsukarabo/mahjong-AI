@@ -76,16 +76,32 @@ function is_pon_of(meld_str, tile_norm) {
     return `${suit}${n === 0 ? 5 : n}` === tile_norm;
 }
 
-// ---- 局の役情報を収集（バックフィル用） ----
+// ---- 局の役情報・和了スートを収集（バックフィル用） ----
+
+function detect_primary_suit(shoupai_str) {
+    // 和了手牌文字列から最多の数牌スートを返す（'m'/'p'/'s'/''）
+    if (!shoupai_str) return '';
+    const base = shoupai_str.split(',')[0];
+    const counts = { m: 0, p: 0, s: 0 };
+    let suit = '';
+    for (const c of base) {
+        if ('mps'.includes(c)) { suit = c; continue; }
+        if (suit && !isNaN(parseInt(c))) counts[suit]++;
+    }
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    return sorted[0][1] > 0 ? sorted[0][0] : '';
+}
 
 function get_yaku_l(round_log) {
-    const yaku_l = [[], [], [], []];
+    const yaku_l     = [[], [], [], []];
+    const win_suit_l = ['', '', '', ''];
     for (const ev of round_log) {
         if (!ev.hule) continue;
         const l = ev.hule.l;
         yaku_l[l] = (ev.hule.hupai || []).map(h => h.name || h);
+        if (ev.hule.shoupai) win_suit_l[l] = detect_primary_suit(ev.hule.shoupai);
     }
-    return yaku_l;
+    return { yaku_l, win_suit_l };
 }
 
 // ---- 局の最終得失点を収集 ----
@@ -118,8 +134,8 @@ function parse_round(paipu_id, paipu, round_idx, board) {
     let   total_discards = 0;
 
     // 局末の得失点・役情報（先に収集してすべてのレコードに付与）
-    const round_fenpei = get_round_fenpei(round_log, board);
-    const yaku_l       = get_yaku_l(round_log);
+    const round_fenpei          = get_round_fenpei(round_log, board);
+    const { yaku_l, win_suit_l } = get_yaku_l(round_log);
 
     // 対局終了結果
     const final_points = paipu.point ? paipu.point.map(p => parseFloat(p)) : [0, 0, 0, 0];
@@ -210,6 +226,7 @@ function parse_round(paipu_id, paipu, round_idx, board) {
                 final_ranks,
                 pon_passes_l: pon_passes_l.map(a => [...a]),
                 yaku_l,
+                win_suit_l,
             });
             continue;
         }
