@@ -10,7 +10,7 @@
   other2_discard(44)      [index 266:310] +
   pass_pon_signal(34)     [index 310:344] +
   wind(5)                 [index 344:349] +
-  yaku_prob(15)           [index 349:364]
+  yaku_prob(21)           [index 349:370]
 
 アーキテクチャ (v5と同一):
   1. global_encoder (355->256->d_model + BN): 全特徴量のグローバル圧縮
@@ -45,7 +45,7 @@ DATA_DIR  = Path(__file__).parent.parent / "data" / "features"
 MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v6"
 
 CONFIG = {
-    "input_dim":    364,
+    "input_dim":    370,
     "d_model":      128,
     "nhead":        4,
     "num_layers":   3,
@@ -138,19 +138,21 @@ class HandInferenceV6(nn.Module):
 
         tokens = g.unsqueeze(1) + tile_emb.unsqueeze(0) + vis_emb             # [B, 34, d_model]
         out    = self.transformer(tokens)                                      # [B, 34, d_model]
-        logits = self.head(out)                                                # [B, 34, 5]
+        logits_raw = self.head(out)                                            # [B, 34, 5] マスク前
 
-        # 4枚ハードマスク
+        # 4枚ハードマスク (推論用: visible_counts の二重計算バグでラベルがマスク領域に入るケースがあるため
+        #                   学習時は logits_raw を使い、推論時のみ logits を使う)
         vis_raw = (x[:, VISIBLE_OFFSET:VISIBLE_OFFSET + self.n_pai] * 4).round().long().clamp(0, 4)
         hidden_remaining = (4 - vis_raw).clamp(min=0)                         # [B, 34]
         mask = self.count_range > hidden_remaining.unsqueeze(-1)              # [B, 34, 5]
-        logits = logits.masked_fill(mask, float('-inf'))
+        logits = logits_raw.masked_fill(mask, float('-inf'))
 
         # 赤牌予測: 5m/5p/5s のタイルトークンから binary 分類
         red_tokens = out[:, self.red_tile_idx, :]                             # [B, 3, d_model]
         red_logits = self.red_head(red_tokens)                                # [B, 3, 2]
 
-        return logits, red_logits                                             # [B, 34, 5], [B, 3, 2]
+        # logits=マスク済み(推論用), logits_raw=マスク前(学習用), red_logits
+        return logits, logits_raw, red_logits
 
 
 # ---- 学習・評価 ----
@@ -168,12 +170,13 @@ def train_epoch(model, loader, optimizer, device):
         labels_red = labels_red.to(device)
         optimizer.zero_grad()
 
-        logits, red_logits = model(features)                                  # [B,34,5], [B,3,2]
+        _, logits_raw, red_logits = model(features)                           # raw は学習用
 
-        loss_ce = F.cross_entropy(logits.reshape(-1, model.n_count_cls), labels.reshape(-1))
+        # CE損失はマスク前の raw logits で計算（visible_counts 二重計算バグ回避）
+        loss_ce = F.cross_entropy(logits_raw.reshape(-1, model.n_count_cls), labels.reshape(-1))
 
-        # global sum ソフト制約
-        probs          = F.softmax(logits, dim=-1)                            # [B, 34, 5]
+        # global sum ソフト制約 (raw logits)
+        probs          = F.softmax(logits_raw, dim=-1)                        # [B, 34, 5]
         expected_total = (probs * count_vals).sum(-1).sum(-1)                 # [B]
         target_total   = labels.float().sum(-1)                               # [B]
         loss_global    = F.mse_loss(expected_total, target_total)
@@ -181,9 +184,9 @@ def train_epoch(model, loader, optimizer, device):
         # 赤牌 CE 損失
         loss_red_ce = F.cross_entropy(red_logits.reshape(-1, 2), labels_red.reshape(-1))
 
-        # 整合性制約: P(赤持ち) ≤ P(5を1枚以上持つ)
+        # 整合性制約: P(赤持ち) ≤ P(5を1枚以上持つ) (raw logits)
         prob_has_red = F.softmax(red_logits, dim=-1)[:, :, 1]                # [B, 3]
-        prob_cnt_ge1 = 1 - F.softmax(logits[:, five_idx, :], dim=-1)[:, :, 0]  # [B, 3]
+        prob_cnt_ge1 = 1 - F.softmax(logits_raw[:, five_idx, :], dim=-1)[:, :, 0]  # [B, 3]
         loss_red_cons = F.relu(prob_has_red - prob_cnt_ge1).mean()
 
         loss = (loss_ce
@@ -208,8 +211,9 @@ def eval_epoch(model, loader, device):
     total   = 0
     for features, labels, labels_red in loader:
         features, labels = features.to(device), labels.to(device)
-        logits, _ = model(features)
-        loss = F.cross_entropy(logits.reshape(-1, model.n_count_cls), labels.reshape(-1))
+        logits, logits_raw, _ = model(features)
+        # val_loss は raw logits (inf 回避), argmax は masked logits (推論動作に合わせる)
+        loss = F.cross_entropy(logits_raw.reshape(-1, model.n_count_cls), labels.reshape(-1))
         total_loss += loss.item() * len(features)
         preds = logits.argmax(dim=-1)
         correct += (preds == labels).sum().item()
@@ -297,8 +301,15 @@ def main():
 
     model.eval()
     dummy = torch.zeros(1, CONFIG["input_dim"])
+
+    class _OnnxWrapper(nn.Module):
+        def __init__(self, m): super().__init__(); self.m = m
+        def forward(self, x):
+            logits, _, red_logits = self.m(x)
+            return logits, red_logits
+
     torch.onnx.export(
-        model, dummy,
+        _OnnxWrapper(model), dummy,
         str(MODEL_DIR / "model.onnx"),
         input_names=["features"],
         output_names=["logits", "red_logits"],

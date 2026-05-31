@@ -315,35 +315,46 @@ function pass_pon_signal(pon_passes, max_discards = 70) {
 
 // ---- 役推定用エンコーディング ----
 
-// 15クラス:
-//   0:tanyao / 1:honitsu / 2:chinitsu /
-//   3:yakuhai_haku / 4:yakuhai_hatsu / 5:yakuhai_chun /
-//   6:yakuhai_ba / 7:yakuhai_ji /
-//   8:chanta / 9:riichi / 10:chiitoi / 11:kokushi /
-//   12:suit_man / 13:suit_pin / 14:suit_sou  (honitsu/chinitsu のスート)
+// 21クラス:
+//   0:tanyao /
+//   1:yakuhai_haku / 2:yakuhai_hatsu / 3:yakuhai_chun /
+//   4:yakuhai_ba / 5:yakuhai_ji /
+//   6:chanta / 7:riichi / 8:chiitoi / 9:kokushi /
+//   10:suit_man / 11:suit_pin / 12:suit_sou  (混一/清一のスート) /
+//   13:toitoi /
+//   14:sanshoku_123 / 15:sanshoku_234 / 16:sanshoku_345 / 17:sanshoku_456 /
+//   18:sanshoku_567 / 19:sanshoku_678 / 20:sanshoku_789
 // ※ pinfu は riichi との相関が高すぎるため除外
+// ※ honitsu/chinitsu は suit_man/pin/sou に統合（どの色か分かれば十分）
 const YAKU_LABELS = [
-    (ns, _s) => ns.includes('断幺九'),
-    (ns, _s) => ns.includes('混一色'),
-    (ns, _s) => ns.includes('清一色'),
-    (ns, _s) => ns.includes('役牌 白'),
-    (ns, _s) => ns.includes('役牌 發'),
-    (ns, _s) => ns.includes('役牌 中'),
-    (ns, _s) => ns.some(n => n.startsWith('場風')),
-    (ns, _s) => ns.some(n => n.startsWith('自風')),
-    (ns, _s) => ns.includes('混全帯幺九') || ns.includes('純全帯幺九'),
-    (ns, _s) => ns.includes('立直') || ns.includes('両立直'),
-    (ns, _s) => ns.includes('七対子'),
-    (ns, _s) => ns.includes('国士無双') || ns.includes('国士無双１３面'),
-    (ns, s)  => (ns.includes('混一色') || ns.includes('清一色')) && s === 'm',
-    (ns, s)  => (ns.includes('混一色') || ns.includes('清一色')) && s === 'p',
-    (ns, s)  => (ns.includes('混一色') || ns.includes('清一色')) && s === 's',
+    (ns, _s, _ss) => ns.includes('断幺九'),
+    (ns, _s, _ss) => ns.includes('役牌 白'),
+    (ns, _s, _ss) => ns.includes('役牌 發'),
+    (ns, _s, _ss) => ns.includes('役牌 中'),
+    (ns, _s, _ss) => ns.some(n => n.startsWith('場風')),
+    (ns, _s, _ss) => ns.some(n => n.startsWith('自風')),
+    (ns, _s, _ss) => ns.includes('混全帯幺九') || ns.includes('純全帯幺九'),
+    (ns, _s, _ss) => ns.includes('立直') || ns.includes('両立直'),
+    (ns, _s, _ss) => ns.includes('七対子'),
+    (ns, _s, _ss) => ns.includes('国士無双') || ns.includes('国士無双１３面'),
+    (ns, s,  _ss) => (ns.includes('混一色') || ns.includes('清一色')) && s === 'm',
+    (ns, s,  _ss) => (ns.includes('混一色') || ns.includes('清一色')) && s === 'p',
+    (ns, s,  _ss) => (ns.includes('混一色') || ns.includes('清一色')) && s === 's',
+    (ns, _s, _ss) => ns.includes('対々和'),
+    (ns, _s,  ss) => ns.includes('三色同順') && ss === 1,
+    (ns, _s,  ss) => ns.includes('三色同順') && ss === 2,
+    (ns, _s,  ss) => ns.includes('三色同順') && ss === 3,
+    (ns, _s,  ss) => ns.includes('三色同順') && ss === 4,
+    (ns, _s,  ss) => ns.includes('三色同順') && ss === 5,
+    (ns, _s,  ss) => ns.includes('三色同順') && ss === 6,
+    (ns, _s,  ss) => ns.includes('三色同順') && ss === 7,
 ];
 
-function encode_yaku(hupai_list, win_suit) {
+function encode_yaku(hupai_list, win_suit, win_sanshoku) {
     const names = (hupai_list || []).map(h => h.name || h);
-    const s = win_suit || '';
-    return YAKU_LABELS.map(fn => fn(names, s) ? 1 : 0);
+    const s  = win_suit     || '';
+    const ss = win_sanshoku || 0;
+    return YAKU_LABELS.map(fn => fn(names, s, ss) ? 1 : 0);
 }
 
 /**
@@ -459,9 +470,10 @@ function make_yaku_sample(rec) {
         ...wind_features(rec, rec.l),                 // 5
     ];  // 108次元
 
-    const yaku     = rec.yaku_l     ? (rec.yaku_l[rec.l]     || []) : [];
-    const win_suit = rec.win_suit_l ? (rec.win_suit_l[rec.l] || '') : '';
-    const label_yaku = encode_yaku(yaku, win_suit);
+    const yaku         = rec.yaku_l          ? (rec.yaku_l[rec.l]          || []) : [];
+    const win_suit     = rec.win_suit_l      ? (rec.win_suit_l[rec.l]      || '') : '';
+    const win_sanshoku = rec.win_sanshoku_l  ? (rec.win_sanshoku_l[rec.l]  || 0)  : 0;
+    const label_yaku = encode_yaku(yaku, win_suit, win_sanshoku);
     const won = label_yaku.some(v => v > 0);
     return { features, label_yaku, won, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx } };
 }

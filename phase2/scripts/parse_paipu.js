@@ -92,16 +92,42 @@ function detect_primary_suit(shoupai_str) {
     return sorted[0][1] > 0 ? sorted[0][0] : '';
 }
 
+function detect_sanshoku(shoupai_str) {
+    // 和了手牌から三色同順のシーケンス番号を返す（1〜7、なければ0）
+    if (!shoupai_str) return 0;
+    const cnt = { m: new Array(10).fill(0), p: new Array(10).fill(0), s: new Array(10).fill(0) };
+    for (const part of shoupai_str.split(',')) {
+        let suit = '';
+        for (const c of part.replace(/[+=\-_*]/g, '')) {
+            if ('mps'.includes(c)) { suit = c; continue; }
+            const n = parseInt(c);
+            if (!isNaN(n) && suit) cnt[suit][n === 0 ? 5 : n]++;
+        }
+    }
+    for (let n = 1; n <= 7; n++) {
+        if (cnt.m[n] >= 1 && cnt.m[n+1] >= 1 && cnt.m[n+2] >= 1 &&
+            cnt.p[n] >= 1 && cnt.p[n+1] >= 1 && cnt.p[n+2] >= 1 &&
+            cnt.s[n] >= 1 && cnt.s[n+1] >= 1 && cnt.s[n+2] >= 1) {
+            return n;
+        }
+    }
+    return 0;
+}
+
 function get_yaku_l(round_log) {
-    const yaku_l     = [[], [], [], []];
-    const win_suit_l = ['', '', '', ''];
+    const yaku_l          = [[], [], [], []];
+    const win_suit_l      = ['', '', '', ''];
+    const win_sanshoku_l  = [0, 0, 0, 0];
     for (const ev of round_log) {
         if (!ev.hule) continue;
         const l = ev.hule.l;
         yaku_l[l] = (ev.hule.hupai || []).map(h => h.name || h);
-        if (ev.hule.shoupai) win_suit_l[l] = detect_primary_suit(ev.hule.shoupai);
+        if (ev.hule.shoupai) {
+            win_suit_l[l]     = detect_primary_suit(ev.hule.shoupai);
+            win_sanshoku_l[l] = detect_sanshoku(ev.hule.shoupai);
+        }
     }
-    return { yaku_l, win_suit_l };
+    return { yaku_l, win_suit_l, win_sanshoku_l };
 }
 
 // ---- 局の最終得失点を収集 ----
@@ -135,7 +161,7 @@ function parse_round(paipu_id, paipu, round_idx, board) {
 
     // 局末の得失点・役情報（先に収集してすべてのレコードに付与）
     const round_fenpei          = get_round_fenpei(round_log, board);
-    const { yaku_l, win_suit_l } = get_yaku_l(round_log);
+    const { yaku_l, win_suit_l, win_sanshoku_l } = get_yaku_l(round_log);
 
     // 対局終了結果
     const final_points = paipu.point ? paipu.point.map(p => parseFloat(p)) : [0, 0, 0, 0];
@@ -227,6 +253,7 @@ function parse_round(paipu_id, paipu, round_idx, board) {
                 pon_passes_l: pon_passes_l.map(a => [...a]),
                 yaku_l,
                 win_suit_l,
+                win_sanshoku_l,
             });
             continue;
         }
