@@ -375,19 +375,24 @@ function red_discard_signal(discards, riichi_flag) {
 function visible_counts_vec(rec, viewer_l) {
     const counts = new Array(N_PAI).fill(0);
     for (let l = 0; l < 4; l++) {
+        // 捨て牌：請求済みのものも捨て牌エリアに残って公開されるのでそのままカウント
         for (const p of rec.discards_l[l]) {
             const pi = pai_to_idx(p);
             if (pi >= 0) counts[pi]++;
         }
+        // 副露：請求牌（捨て牌から取った牌）は捨て牌で既にカウント済みなのでスキップする
+        // 方向マーカー(+/-/=)の直前の digit が請求牌
+        // 暗槓（方向マーカーなし）は全4枚を自手牌から出すため全てカウント
         for (const m of rec.melds_l[l]) {
             if (!m) continue;
-            const clean = m.replace(/[+=\-]/g, '');
-            const s = clean[0];
-            for (let i = 1; i < clean.length; i++) {
-                const n = parseInt(clean[i]);
+            const s = m[0];
+            const dirIdx = m.search(/[+=\-]/);  // -1 なら暗槓
+            for (let i = 1; i < m.length; i++) {
+                if (/[+=\-]/.test(m[i])) continue;       // 方向マーカーはスキップ
+                if (dirIdx >= 0 && i === dirIdx - 1) continue;  // 請求牌はスキップ
+                const n = parseInt(m[i]);
                 if (isNaN(n)) continue;
-                const real_n = n === 0 ? 5 : n;
-                const pi = pai_to_idx(`${s}${real_n}`);
+                const pi = pai_to_idx(`${s}${n === 0 ? 5 : n}`);
                 if (pi >= 0) counts[pi]++;
             }
         }
