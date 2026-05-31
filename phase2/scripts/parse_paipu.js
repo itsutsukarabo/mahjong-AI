@@ -222,6 +222,12 @@ function parse_round(paipu_id, paipu, round_idx, board) {
             // 現在の点数 (player_id順)
             const scores = [0, 1, 2, 3].map(id => board.defen[id]);
 
+            // 非アクションプレイヤーの向聴数（聴牌推定ラベル用）
+            const shanten_l = board.shoupai.map((s, l) => {
+                if (l === val.l || !s) return 8;
+                try { return Majiang.Util.xiangting(s); } catch(e) { return 8; }
+            });
+
             records.push({
                 paipu_id,
                 round_idx,
@@ -254,6 +260,7 @@ function parse_round(paipu_id, paipu, round_idx, board) {
                 yaku_l,
                 win_suit_l,
                 win_sanshoku_l,
+                shanten_l,
             });
             continue;
         }

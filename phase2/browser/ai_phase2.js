@@ -348,10 +348,10 @@
         ]);
     }
 
-    function make_hi_features(state, target_l, yaku_probs) {
-        // v7: 370次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+
+    function make_hi_features(state, target_l, yaku_probs, tenpai_prob) {
+        // v7: 371次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+
         //     self_discard(44)+self_meld(38)+visible_counts(34)+red_discard_signal(3)+
-        //     other1_discard(44)+other2_discard(44)+pass_pon_signal(34)+wind(5)+yaku_prob(21)
+        //     other1_discard(44)+other2_discard(44)+pass_pon_signal(34)+wind(5)+yaku_prob(21)+tenpai_prob(1)
         const other_ls = [1, 2, 3]
             .map(rel => (state.l + rel) % 4)
             .filter(l => l !== target_l);
@@ -370,6 +370,7 @@
             ...pass_pon_signal_from_state(state, target_l),             // 34
             ...wind_features(state, target_l),                          // 5
             ...(yaku_probs || new Array(21).fill(0)),                   // 21
+            tenpai_prob != null ? tenpai_prob : 0,                      // 1
         ]);
     }
 
@@ -432,7 +433,7 @@
                 for (let rel = 1; rel <= 3; rel++) {
                     const target_l = (menfeng + rel) % 4;
 
-                    // Stage 1: 役推定（yaku_inference モデルがあれば使用）
+                    // Stage 1a: 役推定（yaku_inference モデルがあれば使用）
                     let yaku_probs = null;
                     if (sessions.yaku_inference) {
                         try {
@@ -442,8 +443,17 @@
                         } catch(e) { console.warn('AI Phase2: yaku_inference error', e); }
                     }
 
+                    // Stage 1b: 聴牌推定（tenpai_inference モデルがあれば使用）
+                    let tenpai_prob = null;
+                    if (sessions.tenpai_inference) {
+                        try {
+                            const t_out = await run_session(sessions.tenpai_inference, make_yaku_features(state, target_l));
+                            tenpai_prob = 1 / (1 + Math.exp(-t_out['logit'].data[0]));
+                        } catch(e) { console.warn('AI Phase2: tenpai_inference error', e); }
+                    }
+
                     // Stage 2: 手牌推定
-                    const out  = await run_session(sessions.hand_inference, make_hi_features(state, target_l, yaku_probs));
+                    const out  = await run_session(sessions.hand_inference, make_hi_features(state, target_l, yaku_probs, tenpai_prob));
                     const flat = out['logits'].data;      // Float32Array [170] = 34×5
                     const probs_per_tile = [];
                     for (let tile = 0; tile < N_PAI; tile++) {
@@ -480,7 +490,8 @@
             ['hand_inference', MODEL_BASE + 'hand_inference/v6/model.onnx'],
             ['behavior_clone', MODEL_BASE + 'behavior_clone/v2/model.onnx'],
             ['value_function', MODEL_BASE + 'value_function/v2/model.onnx'],
-            ['yaku_inference', MODEL_BASE + 'yaku_inference/v1/model.onnx'],
+            ['yaku_inference',   MODEL_BASE + 'yaku_inference/v1/model.onnx'],
+            ['tenpai_inference', MODEL_BASE + 'tenpai_inference/v1/model.onnx'],
         ];
         for (const [name, path] of models) {
             try {

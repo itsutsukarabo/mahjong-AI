@@ -1,6 +1,6 @@
 {
-  "input_dim": 92,
-  "n_yaku": 11,
+  "input_dim": 108,
+  "n_yaku": 15,
   "hidden": [
     256,
     128

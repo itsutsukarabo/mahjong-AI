@@ -1,9 +1,9 @@
 {
-  "test_loss": 0.19168425381061857,
-  "test_macro_acc": 0.9208839535713196,
+  "test_loss": 0.11065689912153816,
+  "test_macro_acc": 0.9574850797653198,
   "config": {
-    "input_dim": 92,
-    "n_yaku": 11,
+    "input_dim": 108,
+    "n_yaku": 15,
     "hidden": [
       256,
       128

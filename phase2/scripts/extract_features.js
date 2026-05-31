@@ -483,6 +483,24 @@ function make_yaku_sample(rec) {
     return { features, label_yaku, won, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx } };
 }
 
+/**
+ * 聴牌推定モデル用 (Stage 1: 108次元入力、yaku_inference と同一構造)
+ * target_l の observable 情報から聴牌確率を予測するサンプル
+ */
+function make_tenpai_sample(rec, target_l) {
+    if (!rec.shanten_l || rec.shanten_l[target_l] === 8) return null;
+    const features = [
+        ...discard_features(rec.discards_l[target_l]),   // 44
+        ...meld_features(rec.melds_l[target_l]),          // 38
+        riichi_l_val(rec.riichi_l[target_l]),             // 1
+        ...game_state_features(rec),                      // 9
+        ...score_features(rec),                           // 11
+        ...wind_features(rec, target_l),                  // 5
+    ];  // 108次元
+    const is_tenpai = (rec.shanten_l[target_l] === 0) ? 1 : 0;
+    return { features, label: is_tenpai, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, target_l } };
+}
+
 function riichi_l_val(v) { return v ? 1 : 0; }
 
 /**
@@ -564,13 +582,14 @@ async function main() {
     fs.mkdirSync(DEST, { recursive: true });
 
     const streams = {
-        hand_inference: fs.createWriteStream(path.join(DEST, 'hand_inference.ndjson'), { encoding: 'utf8' }),
-        behavior_clone: fs.createWriteStream(path.join(DEST, 'behavior_clone.ndjson'), { encoding: 'utf8' }),
-        value_function: fs.createWriteStream(path.join(DEST, 'value_function.ndjson'), { encoding: 'utf8' }),
-        yaku_inference: fs.createWriteStream(path.join(DEST, 'yaku_inference.ndjson'), { encoding: 'utf8' }),
+        hand_inference:   fs.createWriteStream(path.join(DEST, 'hand_inference.ndjson'),   { encoding: 'utf8' }),
+        behavior_clone:   fs.createWriteStream(path.join(DEST, 'behavior_clone.ndjson'),   { encoding: 'utf8' }),
+        value_function:   fs.createWriteStream(path.join(DEST, 'value_function.ndjson'),   { encoding: 'utf8' }),
+        yaku_inference:   fs.createWriteStream(path.join(DEST, 'yaku_inference.ndjson'),   { encoding: 'utf8' }),
+        tenpai_inference: fs.createWriteStream(path.join(DEST, 'tenpai_inference.ndjson'), { encoding: 'utf8' }),
     };
 
-    let total_recs = 0, hi_cnt = 0, bc_cnt = 0, vf_cnt = 0, yi_cnt = 0;
+    let total_recs = 0, hi_cnt = 0, bc_cnt = 0, vf_cnt = 0, yi_cnt = 0, ti_cnt = 0;
 
     for (const f of files) {
         process.stdout.write(`処理中: ${path.basename(f)} ... `);
@@ -588,6 +607,8 @@ async function main() {
                 if (target_l === rec.l) continue;
                 streams.hand_inference.write(JSON.stringify(make_hand_inference_sample(rec, target_l)) + '\n');
                 hi_cnt++;
+                const ti = make_tenpai_sample(rec, target_l);
+                if (ti) { streams.tenpai_inference.write(JSON.stringify(ti) + '\n'); ti_cnt++; }
             }
         }
         total_recs += recs.length;
@@ -600,7 +621,8 @@ async function main() {
     console.log(`  hand_inference: ${hi_cnt} サンプル → ${path.join(DEST, 'hand_inference.ndjson')}`);
     console.log(`  behavior_clone: ${bc_cnt} サンプル → ${path.join(DEST, 'behavior_clone.ndjson')}`);
     console.log(`  value_function: ${vf_cnt} サンプル → ${path.join(DEST, 'value_function.ndjson')}`);
-    console.log(`  yaku_inference: ${yi_cnt} サンプル → ${path.join(DEST, 'yaku_inference.ndjson')}`);
+    console.log(`  yaku_inference:   ${yi_cnt} サンプル → ${path.join(DEST, 'yaku_inference.ndjson')}`);
+    console.log(`  tenpai_inference: ${ti_cnt} サンプル → ${path.join(DEST, 'tenpai_inference.ndjson')}`);
 }
 
 main().catch(err => {
