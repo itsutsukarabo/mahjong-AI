@@ -190,7 +190,7 @@ def main():
     (MODEL_DIR / "eval_result.json").write_text(json.dumps(eval_result, indent=2))
     (MODEL_DIR / "config.json").write_text(json.dumps(CONFIG, indent=2))
 
-    model.eval()
+    model.eval().cpu()
     dummy = torch.zeros(1, CONFIG["input_dim"])
     torch.onnx.export(
         model, dummy,
