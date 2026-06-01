@@ -34,7 +34,7 @@ CONFIG = {
     "dropout":    0.2,
     "lr":         1e-3,
     "weight_decay": 1e-4,
-    "batch_size": 512,
+    "batch_size": 1024,
     "epochs":     40,
     "early_stop_patience": 7,
 }
@@ -147,9 +147,10 @@ def main():
     test_data  = won_data[n_train + n_val:]
     print(f"train: {len(train_data)}, val: {len(val_data)}, test: {len(test_data)}")
 
-    train_loader = DataLoader(YakuDataset(train_data), batch_size=CONFIG["batch_size"], shuffle=True,  num_workers=0)
-    val_loader   = DataLoader(YakuDataset(val_data),   batch_size=CONFIG["batch_size"], shuffle=False, num_workers=0)
-    test_loader  = DataLoader(YakuDataset(test_data),  batch_size=CONFIG["batch_size"], shuffle=False, num_workers=0)
+    use_gpu = device.type == "cuda"
+    train_loader = DataLoader(YakuDataset(train_data), batch_size=CONFIG["batch_size"], shuffle=True,  num_workers=2, pin_memory=use_gpu, persistent_workers=True)
+    val_loader   = DataLoader(YakuDataset(val_data),   batch_size=CONFIG["batch_size"], shuffle=False, num_workers=2, pin_memory=use_gpu, persistent_workers=True)
+    test_loader  = DataLoader(YakuDataset(test_data),  batch_size=CONFIG["batch_size"], shuffle=False, num_workers=2, pin_memory=use_gpu, persistent_workers=True)
 
     model = YakuInference(
         input_dim = CONFIG["input_dim"],

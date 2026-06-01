@@ -55,7 +55,7 @@ CONFIG = {
     "dropout":      0.1,
     "lr":           1e-3,
     "weight_decay": 1e-4,
-    "batch_size":   512,
+    "batch_size":   1024,
     "epochs":       60,
     "early_stop_patience": 7,
 }
@@ -255,9 +255,10 @@ def main():
     test_data  = all_data[n_train + n_val:]
     print(f"train: {len(train_data)}, val: {len(val_data)}, test: {len(test_data)}")
 
-    train_loader = DataLoader(HandInferenceDataset(train_data), batch_size=CONFIG["batch_size"], shuffle=True,  num_workers=0)
-    val_loader   = DataLoader(HandInferenceDataset(val_data),   batch_size=CONFIG["batch_size"], shuffle=False, num_workers=0)
-    test_loader  = DataLoader(HandInferenceDataset(test_data),  batch_size=CONFIG["batch_size"], shuffle=False, num_workers=0)
+    use_gpu = device.type == "cuda"
+    train_loader = DataLoader(HandInferenceDataset(train_data), batch_size=CONFIG["batch_size"], shuffle=True,  num_workers=2, pin_memory=use_gpu, persistent_workers=True)
+    val_loader   = DataLoader(HandInferenceDataset(val_data),   batch_size=CONFIG["batch_size"], shuffle=False, num_workers=2, pin_memory=use_gpu, persistent_workers=True)
+    test_loader  = DataLoader(HandInferenceDataset(test_data),  batch_size=CONFIG["batch_size"], shuffle=False, num_workers=2, pin_memory=use_gpu, persistent_workers=True)
 
     model = HandInferenceV6(
         input_dim   = CONFIG["input_dim"],
