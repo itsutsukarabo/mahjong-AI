@@ -1,6 +1,5 @@
 """
-手牌類推モデル v6: v5 + global sum ソフト制約 + 4枚ハードマスク + 赤牌捨てシグナル
-                      + 他家捨て牌 + 赤牌所持出力 + ポンスルー信号 + 役推定特徴量 + 聴牌確率
+手牌類推モデル v7: v6 + エポック数増加(60→100) + per-epoch train_log 出力
 
 入力 (371次元):
   target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
@@ -32,7 +31,9 @@
 import json
 import math
 import random
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 import torch
@@ -43,7 +44,7 @@ from torch.utils.data import Dataset, DataLoader
 # ---- 設定 ----
 
 DATA_DIR  = Path(__file__).parent.parent / "data" / "features"
-MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v6"
+MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v7"
 
 CONFIG = {
     "input_dim":    371,
@@ -55,12 +56,39 @@ CONFIG = {
     "dropout":      0.1,
     "lr":           1e-3,
     "weight_decay": 1e-4,
-    "batch_size":   1024,
-    "epochs":       60,
+    "batch_size":   512,
+    "epochs":       100,
     "early_stop_patience": 7,
 }
 
 VISIBLE_OFFSET     = 185
+GPU_TEMP_THRESHOLD = 73   # °C を超えたら冷却待機
+GPU_COOL_INTERVAL  = 20   # 秒ごとに温度を再確認
+
+
+def gpu_temp():
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return int(r.stdout.strip())
+    except Exception:
+        return 0
+
+
+def wait_for_cool():
+    temp = gpu_temp()
+    if temp <= GPU_TEMP_THRESHOLD:
+        return
+    print(f"  [thermal] GPU {temp}C > {GPU_TEMP_THRESHOLD}C - cooling...", flush=True)
+    while True:
+        time.sleep(GPU_COOL_INTERVAL)
+        temp = gpu_temp()
+        print(f"  [thermal] GPU {temp}C", flush=True)
+        if temp <= GPU_TEMP_THRESHOLD:
+            print("  [thermal] cool enough, resuming", flush=True)
+            break
 LAMBDA_GLOBAL_SUM  = 0.05
 LAMBDA_RED_CE      = 0.3
 LAMBDA_RED_CONS    = 0.1
@@ -282,6 +310,11 @@ def main():
         val_loss, val_acc  = eval_epoch(model, val_loader, device)
         scheduler.step(val_loss)
         print(f"epoch {epoch:3d}  train_loss={train_ce:.4f}  gs={train_gs:.3f}  val_loss={val_loss:.4f}  val_acc={val_acc:.4f}", flush=True)
+        log_entry = {"epoch": epoch, "train_loss": train_ce, "gs_loss": train_gs,
+                     "val_loss": val_loss, "val_acc": val_acc}
+        with open(MODEL_DIR / "train_log.json", "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry) + "\n")
+        wait_for_cool()
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
