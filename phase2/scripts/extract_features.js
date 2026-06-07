@@ -369,6 +369,33 @@ function red_discard_signal(discards, riichi_flag) {
 }
 
 /**
+ * 全プレイヤーの捨て牌・副露に赤牌（m0/p0/s0）が公開されているかをフラグ化（3次元）
+ * 赤牌が公開情報として見えている = 対象プレイヤーが所持していない確定情報
+ */
+function red_visible_flags(discards_l, melds_l) {
+    const flags = [0, 0, 0];  // [m0, p0, s0]
+    const suits = ['m', 'p', 's'];
+    for (let l = 0; l < 4; l++) {
+        for (const p of discards_l[l]) {
+            const base = p.replace(/[_*+=\-]/g, '');
+            for (let i = 0; i < 3; i++) {
+                if (base === suits[i] + '0') flags[i] = 1;
+            }
+        }
+        for (const m of (melds_l[l] || [])) {
+            if (!m) continue;
+            const si = suits.indexOf(m[0]);
+            if (si < 0) continue;
+            const clean = m.replace(/[+=\-]/g, '');
+            for (let j = 1; j < clean.length; j++) {
+                if (clean[j] === '0') { flags[si] = 1; break; }
+            }
+        }
+    }
+    return flags;
+}
+
+/**
  * 全プレイヤーの捨て牌・副露 + viewer自身の手牌から「見え牌枚数」を計算（34次元、/4 正規化）
  * 相手が持てない枚数の上限を示す情報として手牌推定に使用する
  */
@@ -425,12 +452,12 @@ function others_meld_type_features(rec) {
 // ---- 3モデル用の特徴量・ラベル生成 ----
 
 /**
- * 手牌類推モデル用 (v6: flat 349次元 ※学習時は add_yaku_features.py で364次元になる)
+ * 手牌類推モデル用 (v10: flat 352次元 ※学習時は add_yaku_features.py で373次元、add_tenpai_features.py で374次元になる)
  * 視点プレイヤー l から見た 対象プレイヤー target_l の特徴量 + ラベル
  *
  * target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
  * self_discard(44) + self_meld(38) + visible_counts(34) + red_discard_signal(3) +
- * other1_discard(44) + other2_discard(44) + pass_pon_signal(34) + wind(5) = 349次元
+ * red_visible(3) + other1_discard(44) + other2_discard(44) + pass_pon_signal(34) + wind(5) = 352次元
  */
 function make_hand_inference_sample(rec, target_l) {
     // viewer でも target でもない2プレイヤーを相対順で取得
@@ -448,11 +475,12 @@ function make_hand_inference_sample(rec, target_l) {
         ...meld_features(rec.melds_l[rec.l]),            // 38
         ...visible_counts_vec(rec, rec.l),               // 34
         ...red_discard_signal(rec.discards_l[target_l], rec.riichi_l[target_l]),  // 3
+        ...red_visible_flags(rec.discards_l, rec.melds_l),                       // 3
         ...discard_features(rec.discards_l[other_ls[0]]),  // 44
         ...discard_features(rec.discards_l[other_ls[1]]),  // 44
         ...pass_pon_signal(rec.pon_passes_l?.[target_l]),   // 34
         ...wind_features(rec, target_l),                    // 5
-    ];  // 349次元
+    ];  // 352次元
 
     const { counts: hand_vec_target, red: red_target } = encode_hand_red(rec.hands_l[target_l]);
     return { features, label_hand: hand_vec_target, label_red: red_target, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };

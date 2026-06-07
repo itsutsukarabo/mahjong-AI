@@ -237,6 +237,7 @@
 
     function visible_counts_vec(state) {
         // 全プレイヤーの捨て牌・副露 + viewer自身の手牌から見え牌枚数を計算（34次元、/4正規化）
+        // 副露の請求牌（他家捨て牌から取った牌）は捨て牌でカウント済みのためスキップする
         const counts = new Array(N_PAI).fill(0);
         for (let l = 0; l < 4; l++) {
             for (const p of state.discards_l[l]) {
@@ -245,10 +246,12 @@
             }
             for (const m of state.melds_l[l]) {
                 if (!m) continue;
-                const clean = m.replace(/[+=\-]/g, '');
-                const s = clean[0];
-                for (let i = 1; i < clean.length; i++) {
-                    const n = parseInt(clean[i]);
+                const s = m[0];
+                const dirIdx = m.search(/[+=\-]/);  // 暗槓は -1
+                for (let i = 1; i < m.length; i++) {
+                    if (/[+=\-]/.test(m[i])) continue;
+                    if (dirIdx >= 0 && i === dirIdx - 1) continue;  // 請求牌スキップ
+                    const n = parseInt(m[i]);
                     if (isNaN(n)) continue;
                     const pi = pai_to_idx(s + (n === 0 ? 5 : n));
                     if (pi >= 0) counts[pi]++;
@@ -266,6 +269,30 @@
         return ['m0', 'p0', 's0'].map(r =>
             discards.some(p => p.replace(/[_*+=\-]/g, '') === r) ? 1 : 0
         );
+    }
+
+    function red_visible_flags(state) {
+        // 全プレイヤーの捨て牌・副露に赤牌（m0/p0/s0）が公開されているかをフラグ化（3次元）
+        const flags = [0, 0, 0];  // [m0, p0, s0]
+        const suits = ['m', 'p', 's'];
+        for (let l = 0; l < 4; l++) {
+            for (const p of state.discards_l[l]) {
+                const base = p.replace(/[_*+=\-]/g, '');
+                for (let i = 0; i < 3; i++) {
+                    if (base === suits[i] + '0') flags[i] = 1;
+                }
+            }
+            for (const m of (state.melds_l[l] || [])) {
+                if (!m) continue;
+                const si = suits.indexOf(m[0]);
+                if (si < 0) continue;
+                const clean = m.replace(/[+=\-]/g, '');
+                for (let j = 1; j < clean.length; j++) {
+                    if (clean[j] === '0') { flags[si] = 1; break; }
+                }
+            }
+        }
+        return flags;
     }
 
     function pass_pon_signal_from_state(state, target_l, max_discards = 70) {
@@ -349,9 +376,10 @@
     }
 
     function make_hi_features(state, target_l, yaku_probs, tenpai_prob) {
-        // v9: 371次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+
+        // v10: 374次元 = target_discard(44)+target_meld(38)+riichi(1)+score(11)+game(9)+
         //     self_discard(44)+self_meld(38)+visible_counts(34)+red_discard_signal(3)+
-        //     other1_discard(44)+other2_discard(44)+pass_pon_signal(34)+wind(5)+yaku_prob(21)+tenpai_prob(1)
+        //     red_visible(3)+other1_discard(44)+other2_discard(44)+pass_pon_signal(34)+wind(5)+
+        //     yaku_prob(21)+tenpai_prob(1)
         const other_ls = [1, 2, 3]
             .map(rel => (state.l + rel) % 4)
             .filter(l => l !== target_l);
@@ -365,6 +393,7 @@
             ...meld_features(state.melds_l[state.l]),                   // 38
             ...visible_counts_vec(state),                               // 34
             ...red_discard_signal(state.discards_l[target_l], state.riichi_l[target_l]),  // 3
+            ...red_visible_flags(state),                                // 3
             ...discard_features(state.discards_l[other_ls[0]]),         // 44
             ...discard_features(state.discards_l[other_ls[1]]),         // 44
             ...pass_pon_signal_from_state(state, target_l),             // 34
