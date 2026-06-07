@@ -1,0 +1,14 @@
+{
+  "input_dim": 349,
+  "d_model": 128,
+  "nhead": 4,
+  "num_layers": 3,
+  "n_pai": 34,
+  "n_count_cls": 5,
+  "dropout": 0.1,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "batch_size": 512,
+  "epochs": 100,
+  "early_stop_patience": 7
+}
