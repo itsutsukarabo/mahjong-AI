@@ -1,6 +1,6 @@
 # タスク一覧
 
-最終更新: 2026-06-07（手牌推測強化グループ TICKET-027〜029 追加）
+最終更新: 2026-06-07（手牌推測強化グループ TICKET-027〜034 追加）
 
 > **優先順位のルール**: 「新規タスク」セクションのチケットを最優先で処理する。「特殊牌対応」グループは新規タスクがなくなった後に着手する。
 
@@ -409,7 +409,9 @@ patch-package で `@kobalab/majiang-ui` の `dialog.js` を修正する（`convl
 
 ## 手牌推測強化グループ（v10〜）
 
-> TICKET-027 と TICKET-028 は並行着手可。TICKET-029 は TICKET-027 の実装結果を踏まえて設計確定する。
+> 赤牌修正: TICKET-030 → TICKET-031 → TICKET-032 の順。  
+> ブロック表示: TICKET-027 → TICKET-028。TICKET-029 は TICKET-027 後に設計確定。  
+> TICKET-033（解釈説明）・TICKET-034（順目別評価）は他と独立して着手可。
 
 ---
 
@@ -533,6 +535,269 @@ per-tile count ラベルのみでは面子分解が一意に定まらない問�
 **このチケットのゴール**  
 - 上記選択肢のどれを採用するかを決定し、選択理由と実装仕様をこのチケットに記録する  
 - 決定後、次チケットとして「v11 学習データ再生成 + 新モデルヘッド追加」を切る
+
+---
+
+### TICKET-030: 赤牌特徴量追加 + visible_counts_vec ブラウザバグ修正
+
+**状態**: 未着手  
+**優先度**: 高  
+**依存**: なし
+
+**概要**  
+現行モデルが赤牌をほぼ0%と予測し続ける根本原因が2つある。それぞれを修正してv10学習の前提を整える。
+
+**原因1: 「赤牌が公開情報として見えているか」の特徴量が存在しない**
+
+現行で唯一の赤牌固有入力特徴量は `red_discard_signal(3)` = 「対象プレイヤー自身が赤5を切ったか」のみ。  
+他家の捨て牌・副露に m0/p0/s0 が含まれていても「m5が1枚見える」としか認識できず、赤牌か通常5かの情報が失われている。  
+赤牌は1ゲームに各1枚しかなく、誰かの捨て牌・副露に見えていれば「対象が持っている可能性はゼロ」という最強の否定シグナルだが、モデルがこれを学習できない。
+
+追加する特徴量 `red_visible(3)`: 全プレイヤーの捨て牌・副露を走査し、m0/p0/s0 が公開されているかを 0/1 でフラグ化。
+
+```javascript
+// extract_features.js / ai_phase2.js 両方に追加
+function red_visible_flags(discards_l, melds_l) {
+    const flags = [0, 0, 0];  // [m0, p0, s0]
+    const suits = ['m', 'p', 's'];
+    for (let l = 0; l < 4; l++) {
+        for (const p of discards_l[l]) {
+            const base = p.replace(/[_*+=\-]/g, '');
+            for (let i = 0; i < 3; i++) {
+                if (base === suits[i] + '0') flags[i] = 1;
+            }
+        }
+        for (const m of (melds_l[l] || [])) {
+            if (!m) continue;
+            const si = suits.indexOf(m[0]);
+            if (si < 0) continue;
+            const clean = m.replace(/[+=\-]/g, '');
+            for (let j = 1; j < clean.length; j++) {
+                if (clean[j] === '0') { flags[si] = 1; break; }
+            }
+        }
+    }
+    return flags;
+}
+```
+
+`make_hand_inference_sample()` の `features` 末尾に `...red_visible_flags(rec.discards_l, rec.melds_l)` を追加。  
+これにより **input_dim: 371 → 374**。
+
+**原因2: ブラウザ側 visible_counts_vec の請求牌二重カウント**
+
+`extract_features.js` は副露の請求牌（他家捨て牌から取った牌）を「捨て牌でカウント済み」としてスキップするが、`ai_phase2.js`（L.246〜261）はスキップ処理を省略しており二重カウントになっている。
+
+```javascript
+// ai_phase2.js の visible_counts_vec — melds ループを以下に修正
+for (const m of state.melds_l[l]) {
+    if (!m) continue;
+    const s = m[0];
+    const dirIdx = m.search(/[+=\-]/);  // 暗槓は -1
+    for (let i = 1; i < m.length; i++) {
+        if (/[+=\-]/.test(m[i])) continue;
+        if (dirIdx >= 0 && i === dirIdx - 1) continue;  // 請求牌スキップ
+        const n = parseInt(m[i]);
+        if (isNaN(n)) continue;
+        const pi = pai_to_idx(s + (n === 0 ? 5 : n));
+        if (pi >= 0) counts[pi]++;
+    }
+}
+```
+
+**進め方**  
+1. `phase2/scripts/extract_features.js` に `red_visible_flags()` を追加し `make_hand_inference_sample` に組み込む（+3次元）  
+2. `phase2/browser/ai_phase2.js` に同関数を追加し `make_hi_features` の末尾に組み込む  
+3. `ai_phase2.js` の `visible_counts_vec` の副露ループに請求牌スキップを追加  
+4. `tmp_clone/dist/js/ai_phase2.js` にも同内容を反映  
+5. `node extract_features.js` を再実行して `hand_inference.ndjson` を再生成（374次元になっていることを確認）  
+6. サンプル数行でフラグが正しく立っているかをログで目視確認する
+
+---
+
+### TICKET-031: v10 手牌推測モデル学習（input_dim 374, d_model 256）
+
+**状態**: 未着手  
+**優先度**: 高  
+**依存**: TICKET-030（特徴量再生成完了後）
+
+**概要**  
+TICKET-030 で追加した `red_visible(3)` 特徴量を含む 374次元入力で v10 を学習し、赤牌予測精度が改善されることを確認する。
+
+**変更内容**
+
+```
+MODEL_DIR : .../v10
+input_dim : 371 → 374
+d_model   : 256（v9 継承）
+GPU_TEMP_THRESHOLD : 65（v9 継承）
+epochs    : 100（v9 継承）
+```
+
+その他アーキテクチャ・損失関数は v9 と同一。
+
+**判定基準**  
+- `test_acc > 0.8654`（v9比改善）: 赤牌特徴量が精度向上に寄与
+- `test_acc ≈ 0.8654`（v9と同等）: 赤牌特徴量は中立（悪化ではない）
+- red_logits の予測分布を確認: v9では常に0%に近かったが、改善されているか
+
+**進め方**  
+1. `train_hand_inference_v9.py` を複製して `train_hand_inference_v10.py` を作成  
+2. `CONFIG["input_dim"]` を 374 に変更、`MODEL_DIR` を v10 に変更  
+3. 学習を実行（GPU冷却閾値 65°C を確認してから）  
+4. `eval_result.json` と `train_log.json` を確認  
+5. ONNX エクスポート → `tmp_clone/dist/models/hand_inference/v10/model.onnx` に配置  
+6. `phase2/browser/ai_phase2.js` と `tmp_clone/dist/js/ai_phase2.js` のモデルパスを v9 → v10 に更新  
+7. `localhost:8080` で赤牌確率が意味ある値を示すことを目視確認する
+
+---
+
+### TICKET-032: フロント赤牌表示改善 — 赤5縦列追加
+
+**状態**: 未着手  
+**優先度**: 中  
+**依存**: TICKET-031（v10 ONNX が配置されて red_logits が有意になってから）
+
+**概要**  
+手牌推測テーブルの 5 の列の横に「赤5」縦列を追加し、赤牌所持確率を per-tile テーブルと一体で視認できるようにする。
+
+**現状の表示構造**
+
+```
+     1  2  3  4  5  6  7  8  9
+M  [枚数分布] ...
+P  ...
+S  ...
+Z  ...
+赤牌: m0:XX% p0:XX% s0:XX%  ← 現在はテーブル外に別行
+```
+
+**変更後の表示構造**
+
+```
+     1  2  3  4  5  5赤  6  7  8  9
+M  [枚数分布]  [持:%]  ...
+P  ...
+S  ...
+Z  ...
+```
+
+- 5赤列の表示内容: `aka.m0`（モデルの `red_logits` から算出した所持確率）を「持: XX%」形式で表示
+- 通常の 5 列（5枚数分布）と隣接させることで、「5mを2枚持ちのうち赤かどうか」を直感的に比較できる
+- 字牌行には赤牌列を追加しない
+- 現行の「赤牌: m0:XX% ...」セクションは削除して、テーブルに統合する
+
+**実装場所**  
+`tmp_clone/dist/js/majiang-2.5.1.js` L.8388〜8443（SUITS_HI 定義 + テーブル描画部分）
+
+主な変更:
+1. `SUITS_HI` の m/p/s エントリに `has_aka: true` フラグを追加
+2. テーブルのヘッダー生成で、n===5 の後に「5赤」列ヘッダーを挿入
+3. テーブルのデータ行で、n===5 の後に `aka[suit+'0']` の確率を表示するセルを追加
+4. 赤牌セクション（`.ai-hi-aka-section` L.8428〜8437）を削除して整理
+
+**進め方**  
+1. `majiang-2.5.1.js` のテーブル描画ループを修正（m/p/s の 5 列の直後に赤5列を挿入）  
+2. CSS（`majiang-2.5.1.css`）で赤5列のスタイルを設定（背景色等で区別）  
+3. `src/` 側の pug/stylus ソースも対応させてビルドできる状態にする  
+4. `localhost:8080` で表示確認
+
+---
+
+### TICKET-033: 手牌推測 解釈説明機能（ルールベース説明 + 感度分析）
+
+**状態**: 未着手  
+**優先度**: 中  
+**依存**: なし（既存モデル出力とフロント特徴量を利用）
+
+**概要**  
+「なぜこの推測結果になったのか」を人間が理解できるようにする。Transformer はブラックボックスだが、入力特徴量の意味を可視化することで間接的な説明を提供する。
+
+**フェーズ1: ルールベース説明テキスト生成**
+
+モデル推論後、特徴量の値を参照して自然言語の説明を生成するルールベース関数を追加する。
+
+| 条件 | 説明テキスト例 |
+|------|----------------|
+| `red_discard_signal[s] === 1` | 「赤5sを切り済みのため赤牌所持可能性なし」 |
+| `red_visible_flags[s] === 1` | 「赤5sが他家に公開済みのため所持可能性なし」（TICKET-030後） |
+| `riichi === 1` | 「リーチ中のため手牌変化なし」 |
+| `pass_pon_signal[i] > 0.5` | 「牌Xのポンスルーあり: 2枚未満の可能性」 |
+| `visible_counts[i] >= 0.75` | 「牌Xは3枚以上が公開済み: 所持最大1枚」 |
+| `remaining < 10 tiles` | 「残り牌少なく手牌が固定化している可能性」 |
+
+実装: `make_explanation_text(features, probs_per_tile, aka, target_l)` 関数を `ai_phase2.js` に追加。  
+フロント: 各プレイヤーの手牌推測セクションの下部に「推測根拠」として表示（折りたたみ可）。
+
+**フェーズ2: 感度分析（Stretch Goal）**
+
+ルールベースでは表現しきれない「モデルが何に反応しているか」を確認するため、特定の特徴量をON/OFFして推論結果の変化を計算する。
+
+対象特徴量:
+- リーチフラグ (ON→OFF)
+- 赤牌捨てシグナル (1→0)
+- ポンスルー信号 (全ゼロ化)
+- visible_counts の特定牌 (0にリセット)
+
+UI: 「感度分析モード」ボタンをクリックすると、主要特徴量の変化量を差分ヒートマップとして per-tile テーブル上に重ねて表示する。
+
+**注意**: Attention 可視化（Transformer 内部）はブラウザ上の ONNX ランタイムではアクセスが困難なため、このチケットのスコープ外とする。
+
+**進め方（フェーズ1）**  
+1. `ai_phase2.js` に `make_explanation_text(state, target_l, probs_per_tile, aka)` を実装する  
+2. フロントの hand_inference 描画部分に説明テキストの表示エリアを追加する  
+3. 数パターンの牌譜で説明テキストが意味あるものになっているか目視確認する  
+4. フェーズ2（感度分析）は別 PR で対応
+
+---
+
+### TICKET-034: 手牌推測モデル 順目別精度評価
+
+**状態**: 未着手  
+**優先度**: 中  
+**依存**: なし（既存モデルと学習データで実施可）
+
+**概要**  
+現行の評価指標は全サンプルの平均 `test_acc` のみ。「終盤ほど高精度」という仮説を定量的に検証するため、`remaining`（残り牌数）によるバケット別 accuracy を算出する。
+
+**バケット定義**
+
+| バケット | remaining 範囲 | ゲーム段階 |
+|---------|---------------|---------|
+| 序盤 | > 50 | 1〜7巡目頃 |
+| 中盤 | 30 < r ≤ 50 | 8〜14巡目頃 |
+| 終盤 | 10 < r ≤ 30 | 15〜21巡目頃 |
+| 局終盤 | r ≤ 10 | 22巡目以降 |
+
+**実装内容**
+
+`evaluate()` 関数（`train_hand_inference.py` 系）を拡張:
+1. `remaining` をサンプルメタデータから取得（features の index 0 × 70 で逆算）
+2. サンプルをバケットに振り分け
+3. バケットごとに accuracy・loss を計算
+4. `eval_result.json` に `by_remaining_bucket` フィールドとして追記
+
+```json
+{
+  "test_acc": 0.8654,
+  "test_loss": 0.3312,
+  "by_remaining_bucket": {
+    "early":    { "acc": 0.820, "loss": 0.412, "n": 12345 },
+    "mid":      { "acc": 0.851, "loss": 0.371, "n": 18234 },
+    "late":     { "acc": 0.887, "loss": 0.298, "n": 11203 },
+    "endgame":  { "acc": 0.921, "loss": 0.241, "n": 3456 }
+  }
+}
+```
+
+**将来的な損失重み付けへの活用**  
+バケット別精度が確認できれば、将来的に「終盤サンプルを高重みで学習する sample_weight」の導入判断ができる。このチケットは測定フェーズのみで、重み付け導入は別チケットとする。
+
+**進め方**  
+1. `train_hand_inference_v10.py` の `evaluate()` 関数にバケット別集計を追加する  
+2. v9 の学習済みモデルに対して評価だけ再実行して現状値を確認する（v10 学習前の参照値として記録）  
+3. v10 学習後の `eval_result.json` にバケット別精度が記録されることを確認する  
+4. 仮説「終盤ほど高精度」が成り立つか判定してコメントに残す
 
 ---
 
