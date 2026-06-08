@@ -53,7 +53,7 @@ CONFIG = {
     "lr":           1e-3,
     "weight_decay": 1e-4,
     "batch_size":   512,
-    "epochs":       150,
+    "epochs":       200,
     "early_stop_patience": 7,
     "lambda_block": 0.3,
 }
