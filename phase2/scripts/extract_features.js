@@ -19,6 +19,7 @@
 const fs   = require('fs');
 const path = require('path');
 const readline = require('readline');
+const Majiang  = require('../../majiang-core/lib');
 
 // ---- CLI引数パース ----
 
@@ -483,7 +484,12 @@ function make_hand_inference_sample(rec, target_l) {
     ];  // 352次元
 
     const { counts: hand_vec_target, red: red_target } = encode_hand_red(rec.hands_l[target_l]);
-    return { features, label_hand: hand_vec_target, label_red: red_target, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
+
+    const label_block = (rec.shanten_l && rec.shanten_l[target_l] === 0)
+        ? compute_block_labels(Majiang.Shoupai.fromString(rec.hands_l[target_l]))
+        : null;
+
+    return { features, label_hand: hand_vec_target, label_red: red_target, label_block, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
 }
 
 /**
@@ -527,6 +533,59 @@ function make_tenpai_sample(rec, target_l) {
     ];  // 108次元
     const is_tenpai = (rec.shanten_l[target_l] === 0) ? 1 : 0;
     return { features, label: is_tenpai, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, target_l } };
+}
+
+// ---- ブロックラベル生成（v11用） ----
+
+function meld_str_to_block(meld_str, triplet, seq, pair) {
+    const suit = meld_str[0];
+    const nums = meld_str.slice(1).replace(/[^0-9]/g, '').split('').map(Number);
+    const suit_offset = { m: 0, p: 9, s: 18, z: 27 }[suit];
+    if (suit_offset === undefined || nums.length === 0) return;
+
+    if (nums.length >= 3 && nums[0] === nums[1] && nums[1] === nums[2]) {
+        // 刻子 or 槓 → triplet として扱う
+        triplet[suit_offset + nums[0] - 1]++;
+    } else if (nums.length === 3) {
+        // 順子
+        const seq_base = { m: 0, p: 7, s: 14 }[suit];
+        if (seq_base !== undefined) seq[seq_base + nums[0] - 1]++;
+    } else if (nums.length === 2 && nums[0] === nums[1]) {
+        // 対子
+        pair[suit_offset + nums[0] - 1]++;
+    }
+    // 単張(国士用) は無視
+}
+
+function compute_block_labels(shoupai) {
+    const triplet = new Array(34).fill(0);
+    const seq     = new Array(21).fill(0);
+    const pair    = new Array(34).fill(0);
+    let total = 0;
+
+    try {
+        const waiting = Majiang.Util.tingpai(shoupai);
+        if (!waiting || waiting.length === 0) return null;
+        for (const wp of waiting) {
+            const decomps = Majiang.Util.hule_mianzi(shoupai, wp + '+');
+            for (const decomp of decomps) {
+                total++;
+                for (const meld of decomp) {
+                    meld_str_to_block(meld, triplet, seq, pair);
+                }
+            }
+        }
+    } catch (e) {
+        return null;
+    }
+
+    if (total === 0) return null;
+
+    return {
+        triplet: triplet.map(v => v / total),
+        seq:     seq.map(v => v / total),
+        pair:    pair.map(v => v / total),
+    };
 }
 
 function riichi_l_val(v) { return v ? 1 : 0; }

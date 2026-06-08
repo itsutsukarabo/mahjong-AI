@@ -977,6 +977,26 @@ module.exports = class Paipu {
 
             const make_best_hand_section = (block_ev) => {
                 const div = $('<div class="ai-hi-best-hand">');
+
+                // v11: tenpai_prob がある場合は「聴牌推定形」として表示
+                if (block_ev.tenpai_prob !== undefined) {
+                    const tp_pct = block_ev.tenpai_prob !== null
+                        ? Math.round(block_ev.tenpai_prob * 100) + '%' : '-';
+                    div.append($('<span class="ai-hi-shanten-label">').text('聴牌推定形'));
+                    div.append($('<span class="ai-hi-tenpai-prob">').text(' テンパイ確率: ' + tp_pct));
+                    if (block_ev.decomps && block_ev.decomps.length > 0) {
+                        const tp_str = (block_ev.tingpai && block_ev.tingpai.length > 0)
+                            ? ' [待: ' + block_ev.tingpai.join(' ') + ']' : '';
+                        for (const d of block_ev.decomps.slice(0, 3)) {
+                            div.append($('<div class="ai-hi-decomp">').text(d.join(' ') + tp_str));
+                        }
+                    } else if (block_ev.hand_str) {
+                        div.append($('<span class="ai-hi-hand-str">').text(block_ev.hand_str));
+                    }
+                    return div;
+                }
+
+                // v10 fallback: shanten ラベル表示
                 if (block_ev.shanten === null) return div;
                 const s_label = block_ev.shanten < 0  ? '和了'
                               : block_ev.shanten === 0 ? 'テンパイ'
@@ -996,7 +1016,9 @@ module.exports = class Paipu {
 
             const make_block_section = (block_ev) => {
                 const wrap = $('<div class="ai-hi-block-section">');
-                wrap.append($('<div class="ai-hi-block-label">').text('ブロック期待値'));
+                const label = block_ev.tenpai_prob !== undefined
+                    ? 'ブロック期待値（聴牌形）' : 'ブロック期待値';
+                wrap.append($('<div class="ai-hi-block-label">').text(label));
 
                 const SUITS_BLOCK = [
                     { key:'m', label:'M', base:0,  size:9, seq_base:0,  has_seq:true  },
