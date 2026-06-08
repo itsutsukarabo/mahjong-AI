@@ -24,14 +24,15 @@ ONNX 出力: logits, red_logits, triplet_logits, seq_logits, pair_logits
 評価 (TICKET-034): remaining バケット別 accuracy を eval_result.json に追記
 """
 
+import gc
 import json
 import math
-import random
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -63,7 +64,6 @@ REMAINING_OFFSET   = 94
 GPU_TEMP_THRESHOLD = 65
 GPU_COOL_INTERVAL  = 20
 
-LAMBDA_GLOBAL_SUM  = 0.05
 LAMBDA_RED_CE      = 0.3
 LAMBDA_RED_CONS    = 0.1
 
@@ -80,15 +80,89 @@ REMAINING_BUCKETS = {
 SEQ_TILE_INDICES = list(range(0, 7)) + list(range(9, 16)) + list(range(18, 25))
 
 
+# ---- 制約付きソフトマックス ----
+
+def find_lambda(logits, k_float, n_iter=50):
+    """Binary search for λ s.t. Σ_i E_λ[c_i] = k. Returns λ detached from grad."""
+    count_vals = torch.arange(5, device=logits.device, dtype=torch.float32)
+    B = logits.shape[0]
+    with torch.no_grad():
+        lo = torch.full((B,), -20.0, device=logits.device)
+        hi = torch.full((B,),  20.0, device=logits.device)
+        for _ in range(n_iter):
+            mid   = (lo + hi) / 2
+            adj   = logits - mid.view(B, 1, 1) * count_vals
+            probs = F.softmax(adj, dim=-1)
+            e_sum = (probs * count_vals).sum(-1).sum(-1)   # (B,)
+            lo    = torch.where(e_sum > k_float, mid, lo)
+            hi    = torch.where(e_sum > k_float, hi,  mid)
+    return (lo + hi) / 2
+
+
+def constrained_softmax_probs(logits, k):
+    """
+    logits: (B, 34, 5)  masked logits from model
+    k:      (B,)        int tensor, total tile count per sample
+    Returns probs (B, 34, 5) with E[Σ c_i] = k exactly.
+    λ is computed detached; gradients flow through logits → probs only.
+    """
+    count_vals = torch.arange(5, device=logits.device, dtype=torch.float32)
+    lam  = find_lambda(logits, k.float())          # (B,), no grad
+    adj  = logits - lam.view(-1, 1, 1) * count_vals
+    return F.softmax(adj, dim=-1)
+
+
+def get_stage_weights(features):
+    """残り牌枚数に基づくゲーム終盤重み (B,)。終盤ほど高い。"""
+    remaining = (features[:, REMAINING_OFFSET] * 70).round().long()
+    w = torch.ones(len(features), device=features.device)
+    w[remaining <= 10] = 4.0
+    w[(remaining > 10) & (remaining <= 30)] = 3.0
+    w[(remaining > 30) & (remaining <= 50)] = 2.0
+    return w
+
+
+def weighted_eae(probs, labels, weights):
+    """
+    Stage-weighted Expected Absolute Error (枚数ズレの期待値):
+      EAE = Σ_tiles Σ_c |c - true| × P(c=c)  per sample
+    probs:   (B, 34, 5)  constrained softmax 出力
+    labels:  (B, 34)     int 正解枚数
+    weights: (B,)        ゲーム終盤重み
+    Returns: スカラー（重み付き平均 EAE）
+    """
+    count_vals = torch.arange(probs.shape[-1], device=probs.device, dtype=torch.float32)
+    abs_diff       = (count_vals - labels.unsqueeze(-1).float()).abs()  # (B, 34, 5)
+    eae_per_sample = (abs_diff * probs).sum(-1).sum(-1)                 # (B,)
+    return (eae_per_sample * weights).sum() / weights.sum()
+
+
 def gpu_temp():
-    try:
-        r = subprocess.run(
-            ["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader"],
-            capture_output=True, text=True, timeout=5,
-        )
-        return int(r.stdout.strip())
-    except Exception:
-        return 0
+    """GPU温度を取得。WSL・Windows ネイティブ・Linux いずれでも動作する。"""
+    candidates = ["nvidia-smi"]
+    if sys.platform == "win32":
+        # Windows ネイティブ: CUDA インストール先や System32 を追加
+        candidates += [
+            r"C:\Windows\System32\nvidia-smi.exe",
+            r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+        ]
+    else:
+        # WSL / Linux: wsl ライブラリパスと Windows マウント経由を追加
+        candidates += [
+            "/usr/lib/wsl/lib/nvidia-smi",
+            "/mnt/c/Windows/System32/nvidia-smi.exe",
+        ]
+    for cmd in candidates:
+        try:
+            r = subprocess.run(
+                [cmd, "--query-gpu=temperature.gpu", "--format=csv,noheader"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                return int(r.stdout.strip())
+        except Exception:
+            continue
+    return 0
 
 
 def wait_for_cool():
@@ -107,34 +181,14 @@ def wait_for_cool():
 
 # ---- データセット ----
 
-def make_block_tensor(label_block):
-    """label_block dict → 89次元 float tensor; None の場合はゼロベクトルを返す"""
-    if label_block is None:
-        return torch.zeros(BLOCK_DIM, dtype=torch.float32), False
-    t = (label_block["triplet"] + label_block["seq"] + label_block["pair"])
-    return torch.tensor(t, dtype=torch.float32), True
-
-
 class HandInferenceDataset(Dataset):
-    def __init__(self, data):
-        self.features   = torch.tensor(
-            [s["features"] for s in data], dtype=torch.float32
-        )
-        self.labels     = torch.tensor(
-            [s["label_hand"] for s in data], dtype=torch.long
-        ).clamp(0, 4)
-        self.labels_red = torch.tensor(
-            [s["label_red"] for s in data], dtype=torch.long
-        )
-
-        block_tensors = []
-        tenpai_masks  = []
-        for s in data:
-            bt, mask = make_block_tensor(s.get("label_block"))
-            block_tensors.append(bt)
-            tenpai_masks.append(mask)
-        self.labels_block  = torch.stack(block_tensors)           # (N, 89)
-        self.tenpai_mask   = torch.tensor(tenpai_masks, dtype=torch.bool)  # (N,)
+    """numpy 配列を受け取り torch.Tensor に変換する（Python dict の巨大なオーバーヘッドを回避）"""
+    def __init__(self, features, labels, labels_red, labels_block, tenpai_mask):
+        self.features     = torch.as_tensor(features,     dtype=torch.float32)
+        self.labels       = torch.as_tensor(labels,       dtype=torch.long).clamp(0, 4)
+        self.labels_red   = torch.as_tensor(labels_red,   dtype=torch.long)
+        self.labels_block = torch.as_tensor(labels_block, dtype=torch.float32)
+        self.tenpai_mask  = torch.as_tensor(tenpai_mask,  dtype=torch.bool)
 
     def __len__(self):
         return len(self.features)
@@ -225,41 +279,40 @@ class HandInferenceV11(nn.Module):
 
 def train_epoch(model, loader, optimizer, device):
     model.train()
-    total_ce     = 0.0
-    total_global = 0.0
-    count_vals   = torch.arange(model.n_count_cls, device=device, dtype=torch.float32)
-    five_idx     = model.red_tile_idx
+    total_eae = 0.0
+    five_idx  = model.red_tile_idx
 
     for features, labels, labels_red, labels_block, tenpai_mask in loader:
-        features    = features.to(device)
-        labels      = labels.to(device)
-        labels_red  = labels_red.to(device)
+        features     = features.to(device)
+        labels       = labels.to(device)
+        labels_red   = labels_red.to(device)
         labels_block = labels_block.to(device)
         tenpai_mask  = tenpai_mask.to(device)
         optimizer.zero_grad()
 
-        _, logits_raw, red_logits, tri_logits, seq_logits, pair_logits = model(features)
+        logits, _, red_logits, tri_logits, seq_logits, pair_logits = model(features)
 
-        loss_ce = F.cross_entropy(logits_raw.reshape(-1, model.n_count_cls), labels.reshape(-1))
+        # 制約付きソフトマックス: E[Σc_i] = k を構造的に保証
+        k     = labels.float().sum(dim=-1).long()
+        probs = constrained_softmax_probs(logits, k)
 
-        probs          = F.softmax(logits_raw, dim=-1)
-        expected_total = (probs * count_vals).sum(-1).sum(-1)
-        target_total   = labels.float().sum(-1)
-        loss_global    = F.mse_loss(expected_total, target_total)
+        # メイン損失: 終盤重み付き EAE（枚数ズレ期待値）
+        stage_w  = get_stage_weights(features)
+        loss_eae = weighted_eae(probs, labels, stage_w)
 
         loss_red_ce = F.cross_entropy(red_logits.reshape(-1, 2), labels_red.reshape(-1))
 
         prob_has_red  = F.softmax(red_logits, dim=-1)[:, :, 1]
-        prob_cnt_ge1  = 1 - F.softmax(logits_raw[:, five_idx, :], dim=-1)[:, :, 0]
+        prob_cnt_ge1  = 1 - probs[:, five_idx, 0]
         loss_red_cons = F.relu(prob_has_red - prob_cnt_ge1).mean()
 
         # block 損失（tenpai サンプルのみ）
         block_loss = 0.0
         n_tenpai = tenpai_mask.sum().item()
         if n_tenpai > 0:
-            tri = tri_logits[tenpai_mask]                   # (N, 34)
-            seq = seq_logits[tenpai_mask]                   # (N, 21)
-            pai = pair_logits[tenpai_mask]                  # (N, 34)
+            tri = tri_logits[tenpai_mask]
+            seq = seq_logits[tenpai_mask]
+            pai = pair_logits[tenpai_mask]
             t_tri = labels_block[tenpai_mask, :34]
             t_seq = labels_block[tenpai_mask, 34:55]
             t_pai = labels_block[tenpai_mask, 55:89]
@@ -267,54 +320,61 @@ def train_epoch(model, loader, optimizer, device):
                           F.binary_cross_entropy_with_logits(seq, t_seq) +
                           F.binary_cross_entropy_with_logits(pai, t_pai)) / 3
 
-        loss = (loss_ce
-                + LAMBDA_GLOBAL_SUM * loss_global
-                + LAMBDA_RED_CE     * loss_red_ce
-                + LAMBDA_RED_CONS   * loss_red_cons
+        loss = (loss_eae
+                + LAMBDA_RED_CE   * loss_red_ce
+                + LAMBDA_RED_CONS * loss_red_cons
                 + CONFIG["lambda_block"] * block_loss)
         loss.backward()
         optimizer.step()
 
-        total_ce     += loss_ce.item()     * len(features)
-        total_global += loss_global.item() * len(features)
+        total_eae += loss_eae.item() * len(features)
 
-    n = len(loader.dataset)
-    return total_ce / n, total_global / n
+    return total_eae / len(loader.dataset)
 
 
 @torch.no_grad()
 def eval_epoch(model, loader, device):
+    """Returns (val_eae, val_acc): stage-weighted EAE がメイン指標 (early stopping 用)"""
     model.eval()
-    total_loss = 0.0
-    correct = 0
-    total   = 0
+    total_wsum = 0.0
+    total_w    = 0.0
+    correct    = 0
+    total      = 0
     for features, labels, labels_red, labels_block, tenpai_mask in loader:
         features, labels = features.to(device), labels.to(device)
-        logits, logits_raw, _, _, _, _ = model(features)
-        loss = F.cross_entropy(logits_raw.reshape(-1, model.n_count_cls), labels.reshape(-1))
-        total_loss += loss.item() * len(features)
-        preds = logits.argmax(dim=-1)
+        logits, _, _, _, _, _ = model(features)
+        k     = labels.float().sum(dim=-1).long()
+        probs = constrained_softmax_probs(logits, k)
+
+        stage_w        = get_stage_weights(features)
+        eae_val        = weighted_eae(probs, labels, stage_w)
+        total_wsum    += eae_val.item() * stage_w.sum().item()
+        total_w       += stage_w.sum().item()
+
+        preds   = probs.argmax(dim=-1)
         correct += (preds == labels).sum().item()
         total   += labels.numel()
-    return total_loss / len(loader.dataset), correct / total
+    val_eae = total_wsum / total_w if total_w > 0 else float('inf')
+    return val_eae, correct / total
 
 
 @torch.no_grad()
 def eval_by_remaining(model, loader, device):
     model.eval()
-    buckets = {k: {"correct": 0, "total": 0, "loss_sum": 0.0} for k in REMAINING_BUCKETS}
+    count_vals = torch.arange(5, device=device, dtype=torch.float32)
+    buckets = {k: {"correct": 0, "total": 0, "eae_sum": 0.0} for k in REMAINING_BUCKETS}
 
     for features, labels, labels_red, labels_block, tenpai_mask in loader:
         features, labels = features.to(device), labels.to(device)
-        logits, logits_raw, _, _, _, _ = model(features)
+        logits, _, _, _, _, _ = model(features)
 
-        preds = logits.argmax(dim=-1)
+        k_vals = labels.float().sum(dim=-1).long()
+        probs  = constrained_softmax_probs(logits, k_vals)
+        preds  = probs.argmax(dim=-1)
         correct_mask = (preds == labels)
-        loss_per_sample = F.cross_entropy(
-            logits_raw.reshape(-1, model.n_count_cls),
-            labels.reshape(-1),
-            reduction="none",
-        ).reshape(len(features), -1).mean(dim=-1)
+
+        abs_diff       = (count_vals - labels.unsqueeze(-1).float()).abs()
+        eae_per_sample = (abs_diff * probs).sum(-1).sum(-1).cpu()  # (B,)
 
         remaining_vals = (features[:, REMAINING_OFFSET] * 70).round().long().cpu()
 
@@ -323,20 +383,74 @@ def eval_by_remaining(model, loader, device):
             for name, (lo, hi) in REMAINING_BUCKETS.items():
                 if lo <= rem <= hi:
                     b = buckets[name]
-                    b["correct"] += correct_mask[i].sum().item()
-                    b["total"]   += correct_mask[i].numel()
-                    b["loss_sum"] += loss_per_sample[i].item()
+                    b["correct"]  += correct_mask[i].sum().item()
+                    b["total"]    += correct_mask[i].numel()
+                    b["eae_sum"]  += eae_per_sample[i].item()
                     break
 
     result = {}
     for name, b in buckets.items():
-        n = b["total"] // model.n_pai if model.n_pai > 0 else 1
+        n_samples = b["total"] // model.n_pai if model.n_pai > 0 else 1
         result[name] = {
-            "acc":  b["correct"] / b["total"] if b["total"] > 0 else 0.0,
-            "loss": b["loss_sum"] / (n or 1),
-            "n":    n,
+            "acc": b["correct"] / b["total"] if b["total"] > 0 else 0.0,
+            "eae": b["eae_sum"] / n_samples if n_samples > 0 else 0.0,
+            "n":   n_samples,
         }
     return result
+
+
+@torch.no_grad()
+def eval_metrics_detailed(model, loader, device):
+    """非ゼロ Recall/Precision/F1, EAE, MAE, 手牌完全一致率, 合計枚数 MAE を算出"""
+    model.eval()
+    all_preds  = []
+    all_labels = []
+    count_vals = torch.arange(5, device=device, dtype=torch.float32)
+    total_wsum = 0.0
+    total_w    = 0.0
+
+    for features, labels, labels_red, labels_block, tenpai_mask in loader:
+        features, labels = features.to(device), labels.to(device)
+        logits, _, _, _, _, _ = model(features)
+        k     = labels.float().sum(dim=-1).long()
+        probs = constrained_softmax_probs(logits, k)
+        preds = probs.argmax(dim=-1)
+        all_preds.append(preds.cpu())
+        all_labels.append(labels.cpu())
+
+        stage_w    = get_stage_weights(features)
+        abs_diff   = (count_vals - labels.unsqueeze(-1).float()).abs()
+        eae_s      = (abs_diff * probs).sum(-1).sum(-1)
+        total_wsum += (eae_s * stage_w).sum().item()
+        total_w    += stage_w.sum().item()
+
+    preds  = torch.cat(all_preds,  dim=0)   # (N, 34)
+    labels = torch.cat(all_labels, dim=0)   # (N, 34)
+
+    true_nz = (labels >= 1)
+    pred_nz = (preds  >= 1)
+    tp = (true_nz & pred_nz).float().sum()
+    fn = (true_nz & ~pred_nz).float().sum()
+    fp = (~true_nz & pred_nz).float().sum()
+
+    recall    = (tp / (tp + fn + 1e-9)).item()
+    precision = (tp / (tp + fp + 1e-9)).item()
+    f1        = 2 * precision * recall / (precision + recall + 1e-9)
+
+    mae_nz         = (preds[true_nz].float() - labels[true_nz].float()).abs().mean().item()
+    exact_acc      = (preds == labels).all(dim=-1).float().mean().item()
+    pred_total_mae = (preds.float().sum(dim=-1) - labels.float().sum(dim=-1)).abs().mean().item()
+    weighted_eae_v = total_wsum / total_w if total_w > 0 else 0.0
+
+    return {
+        "weighted_eae":      round(weighted_eae_v, 4),  # ★ メイン指標
+        "recall_nonzero":    round(recall,    4),
+        "precision_nonzero": round(precision, 4),
+        "f1_nonzero":        round(f1,        4),
+        "mae_nonzero":       round(mae_nz,    4),
+        "hand_exact_acc":    round(exact_acc, 4),
+        "pred_total_mae":    round(pred_total_mae, 4),
+    }
 
 
 def main():
@@ -347,38 +461,74 @@ def main():
     if not ndjson_path.exists():
         print(f"ファイルなし: {ndjson_path}")
         sys.exit(1)
-    print(f"読み込み中: {ndjson_path}")
+    print(f"読み込み中: {ndjson_path}", flush=True)
+
+    # Python dict は float オブジェクトのオーバーヘッドが大きいため
+    # numpy 配列へ直接変換しながら読み込む（メモリ使用量を約 7 分の 1 に削減）
+    _feat, _lab, _lred, _lblk, _tmask = [], [], [], [], []
+    lb_found = False
     with open(ndjson_path, encoding="utf-8") as f:
-        all_data = [json.loads(line) for line in f if line.strip()]
-    print(f"総サンプル数: {len(all_data)}")
+        for line in f:
+            if not line.strip():
+                continue
+            s = json.loads(line)
+            _feat.append(s["features"])
+            _lab.append(s["label_hand"])
+            _lred.append(s.get("label_red") or [0, 0, 0])
+            lb = s.get("label_block")
+            if lb is not None:
+                _lblk.append(lb["triplet"] + lb["seq"] + lb["pair"])
+                _tmask.append(True)
+                lb_found = True
+            else:
+                _lblk.append([0.0] * BLOCK_DIM)
+                _tmask.append(False)
 
-    sample_dim = len(all_data[0]["features"])
-    if sample_dim != CONFIG["input_dim"]:
-        print(f"次元数不一致: expected {CONFIG['input_dim']}, got {sample_dim}")
-        print("extract_features.js → add_yaku_features.py → add_tenpai_features.py の順に実行してください")
-        sys.exit(1)
-
-    if "label_block" not in all_data[0]:
+    if not lb_found:
         print("label_block フィールドがありません。extract_features.js を再実行してください")
         sys.exit(1)
 
-    n_tenpai = sum(1 for s in all_data if s.get("label_block") is not None)
-    print(f"tenpai サンプル数 (label_block あり): {n_tenpai} ({n_tenpai/len(all_data)*100:.1f}%)")
+    feat_np  = np.array(_feat,  dtype=np.float32); del _feat
+    lab_np   = np.array(_lab,   dtype=np.int64);   del _lab
+    lred_np  = np.array(_lred,  dtype=np.int64);   del _lred
+    lblk_np  = np.array(_lblk,  dtype=np.float32); del _lblk
+    tmask_np = np.array(_tmask, dtype=bool);        del _tmask
+    gc.collect()
+    print(f"総サンプル数: {len(feat_np)}")
 
-    random.seed(42)
-    random.shuffle(all_data)
-    n = len(all_data)
+    if feat_np.shape[1] != CONFIG["input_dim"]:
+        print(f"次元数不一致: expected {CONFIG['input_dim']}, got {feat_np.shape[1]}")
+        print("extract_features.js → add_yaku_features.py → add_tenpai_features.py の順に実行してください")
+        sys.exit(1)
+
+    # ノイズ除外: 手牌合計0枚 かつ 副露なし = ゲーム終了後の残骸レコード
+    before   = len(feat_np)
+    keep     = (lab_np.sum(axis=1) > 0) | (feat_np[:, 78] + feat_np[:, 79] + feat_np[:, 80] > 0)
+    feat_np  = feat_np[keep];  lab_np  = lab_np[keep]
+    lred_np  = lred_np[keep];  lblk_np = lblk_np[keep]; tmask_np = tmask_np[keep]
+    print(f"ノイズ除外: {before - len(feat_np)} samples → {len(feat_np)}")
+    print(f"tenpai サンプル数: {tmask_np.sum()} ({tmask_np.sum()/len(feat_np)*100:.1f}%)")
+
+    rng  = np.random.default_rng(42)
+    idx  = rng.permutation(len(feat_np))
+    feat_np  = feat_np[idx];  lab_np  = lab_np[idx]
+    lred_np  = lred_np[idx];  lblk_np = lblk_np[idx]; tmask_np = tmask_np[idx]
+
+    n       = len(feat_np)
     n_train = int(n * 0.8)
     n_val   = int(n * 0.1)
-    train_data = all_data[:n_train]
-    val_data   = all_data[n_train:n_train + n_val]
-    test_data  = all_data[n_train + n_val:]
-    print(f"train: {len(train_data)}, val: {len(val_data)}, test: {len(test_data)}")
+    sl_tr, sl_va, sl_te = slice(None, n_train), slice(n_train, n_train+n_val), slice(n_train+n_val, None)
+
+    train_dataset = HandInferenceDataset(feat_np[sl_tr], lab_np[sl_tr], lred_np[sl_tr], lblk_np[sl_tr], tmask_np[sl_tr])
+    val_dataset   = HandInferenceDataset(feat_np[sl_va], lab_np[sl_va], lred_np[sl_va], lblk_np[sl_va], tmask_np[sl_va])
+    test_dataset  = HandInferenceDataset(feat_np[sl_te], lab_np[sl_te], lred_np[sl_te], lblk_np[sl_te], tmask_np[sl_te])
+    del feat_np, lab_np, lred_np, lblk_np, tmask_np; gc.collect()
+    print(f"train: {len(train_dataset)}, val: {len(val_dataset)}, test: {len(test_dataset)}")
 
     use_gpu = device.type == "cuda"
-    train_loader = DataLoader(HandInferenceDataset(train_data), batch_size=CONFIG["batch_size"], shuffle=True,  num_workers=2, pin_memory=use_gpu, persistent_workers=True)
-    val_loader   = DataLoader(HandInferenceDataset(val_data),   batch_size=CONFIG["batch_size"], shuffle=False, num_workers=2, pin_memory=use_gpu, persistent_workers=True)
-    test_loader  = DataLoader(HandInferenceDataset(test_data),  batch_size=CONFIG["batch_size"], shuffle=False, num_workers=2, pin_memory=use_gpu, persistent_workers=True)
+    train_loader = DataLoader(train_dataset, batch_size=CONFIG["batch_size"], shuffle=True,  num_workers=2, pin_memory=use_gpu, persistent_workers=True)
+    val_loader   = DataLoader(val_dataset,   batch_size=CONFIG["batch_size"], shuffle=False, num_workers=2, pin_memory=use_gpu, persistent_workers=True)
+    test_loader  = DataLoader(test_dataset,  batch_size=CONFIG["batch_size"], shuffle=False, num_workers=2, pin_memory=use_gpu, persistent_workers=True)
 
     model = HandInferenceV11(
         input_dim   = CONFIG["input_dim"],
@@ -393,24 +543,24 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=CONFIG["lr"], weight_decay=CONFIG["weight_decay"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3)
 
-    best_val_loss = math.inf
-    patience_cnt  = 0
+    best_val_eae = math.inf
+    patience_cnt = 0
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
     for epoch in range(1, CONFIG["epochs"] + 1):
-        train_ce, train_gs = train_epoch(model, train_loader, optimizer, device)
-        val_loss, val_acc  = eval_epoch(model, val_loader, device)
-        scheduler.step(val_loss)
-        print(f"epoch {epoch:3d}  train_loss={train_ce:.4f}  gs={train_gs:.3f}  val_loss={val_loss:.4f}  val_acc={val_acc:.4f}", flush=True)
-        log_entry = {"epoch": epoch, "train_loss": train_ce, "gs_loss": train_gs,
-                     "val_loss": val_loss, "val_acc": val_acc}
+        train_eae         = train_epoch(model, train_loader, optimizer, device)
+        val_eae, val_acc  = eval_epoch(model, val_loader, device)
+        scheduler.step(val_eae)
+        print(f"epoch {epoch:3d}  train_eae={train_eae:.4f}  val_eae={val_eae:.4f}  val_acc={val_acc:.4f}", flush=True)
+        log_entry = {"epoch": epoch, "train_eae": train_eae,
+                     "val_eae": val_eae, "val_acc": val_acc}
         with open(MODEL_DIR / "train_log.json", "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry) + "\n")
         wait_for_cool()
 
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            patience_cnt  = 0
+        if val_eae < best_val_eae:
+            best_val_eae = val_eae
+            patience_cnt = 0
             torch.save(model.state_dict(), MODEL_DIR / "model.pt")
         else:
             patience_cnt += 1
@@ -419,18 +569,24 @@ def main():
                 break
 
     model.load_state_dict(torch.load(MODEL_DIR / "model.pt", map_location=device))
-    test_loss, test_acc = eval_epoch(model, test_loader, device)
-    print(f"test_loss={test_loss:.4f}  test_acc={test_acc:.4f}")
+    test_eae, test_acc = eval_epoch(model, test_loader, device)
+    print(f"test_eae={test_eae:.4f}  test_acc={test_acc:.4f}")
 
     bucket_result = eval_by_remaining(model, test_loader, device)
     print("バケット別精度:")
     for name, b in bucket_result.items():
-        print(f"  {name:8s}: acc={b['acc']:.4f}  loss={b['loss']:.4f}  n={b['n']}")
+        print(f"  {name:8s}: acc={b['acc']:.4f}  eae={b['eae']:.4f}  n={b['n']}")
+
+    metrics = eval_metrics_detailed(model, test_loader, device)
+    print("\n詳細評価指標:")
+    for k_name, v in metrics.items():
+        print(f"  {k_name}: {v}")
 
     eval_result = {
-        "test_loss": test_loss,
-        "test_acc":  test_acc,
+        "test_eae": test_eae,
+        "test_acc": test_acc,
         "by_remaining_bucket": bucket_result,
+        **metrics,
         "config": CONFIG,
     }
     (MODEL_DIR / "eval_result.json").write_text(json.dumps(eval_result, indent=2))

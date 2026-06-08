@@ -412,6 +412,52 @@
         return exps.map(x => x / sum);
     }
 
+    function constrained_softmax_js(flat_logits, k) {
+        function expected_sum(lam) {
+            let total = 0;
+            for (let t = 0; t < 34; t++) {
+                const base = t * 5;
+                let max_adj = -Infinity;
+                for (let c = 0; c < 5; c++) {
+                    const v = flat_logits[base + c] - lam * c;
+                    if (v > max_adj) max_adj = v;
+                }
+                let sum_exp = 0, weighted = 0;
+                for (let c = 0; c < 5; c++) {
+                    const e = Math.exp(flat_logits[base + c] - lam * c - max_adj);
+                    sum_exp += e;
+                    weighted += e * c;
+                }
+                total += weighted / sum_exp;
+            }
+            return total;
+        }
+        let lo = -20, hi = 20;
+        for (let i = 0; i < 50; i++) {
+            const mid = (lo + hi) / 2;
+            if (expected_sum(mid) > k) lo = mid; else hi = mid;
+        }
+        const lam = (lo + hi) / 2;
+        const result = [];
+        for (let t = 0; t < 34; t++) {
+            const base = t * 5;
+            let max_adj = -Infinity;
+            for (let c = 0; c < 5; c++) {
+                const v = flat_logits[base + c] - lam * c;
+                if (v > max_adj) max_adj = v;
+            }
+            let sum_exp = 0;
+            const exps = [];
+            for (let c = 0; c < 5; c++) {
+                const e = Math.exp(flat_logits[base + c] - lam * c - max_adj);
+                exps.push(e);
+                sum_exp += e;
+            }
+            result.push(exps.map(e => e / sum_exp));
+        }
+        return result;
+    }
+
     async function run_session(session, feats) {
         const tensor = new ort.Tensor('float32', feats, [1, feats.length]);
         return session.run({ features: tensor });
@@ -498,11 +544,10 @@
                 if (shanten <= 0) {
                     tingpai = Majiang.Util.tingpai(sp);
                     if (tingpai.length > 0) {
-                        // 全待ち牌に対する面子分解を列挙し、重複を除去する
                         const seen = new Set();
                         decomps = [];
                         for (const p of tingpai) {
-                            for (const d of Majiang.Util.hule_mianzi(sp, p)) {
+                            for (const d of Majiang.Util.hule_mianzi(sp, p + '+')) {
                                 const key = d.join('\t');
                                 if (!seen.has(key)) { seen.add(key); decomps.push(d); }
                             }
@@ -512,6 +557,75 @@
             } catch (_) {}
         }
         return { ...ev, hand_str, shanten, tingpai, decomps };
+    }
+
+    /* ---- v11: block head → per-tile ブレンド ---- */
+
+    function seq_contribution(tile_idx, seq_probs) {
+        const suit = Math.floor(tile_idx / 9);
+        if (suit >= 3) return 0;  // 字牌は順子なし
+        const pos      = tile_idx % 9;
+        const seq_base = suit * 7;
+        let total = 0;
+        for (let s = Math.max(0, pos - 2); s <= Math.min(6, pos); s++) {
+            total += seq_probs[seq_base + s];
+        }
+        return Math.min(1, total);
+    }
+
+    function block_to_per_tile_dist(block_tenpai) {
+        return Array.from({length: 34}, (_, i) => {
+            const p_tri  = block_tenpai.triplet[i];
+            const p_seq  = seq_contribution(i, block_tenpai.seq) * (1 - p_tri);
+            const p_pair = block_tenpai.pair[i] * (1 - p_tri) * (1 - p_seq);
+            const p_none = Math.max(0, 1 - p_tri - p_seq - p_pair);
+            return [p_none, p_seq, p_pair, p_tri, 0];
+        });
+    }
+
+    function blend_per_tile(model_probs, block_tenpai, tenpai_p) {
+        const block_dists = block_to_per_tile_dist(block_tenpai);
+        return model_probs.map((probs, i) =>
+            probs.map((p, k) => (1 - tenpai_p) * p + tenpai_p * block_dists[i][k])
+        );
+    }
+
+    function get_best_tenpai_hand(probs_blended, melds) {
+        const hand_str = get_best_hand_str(probs_blended, melds);
+        if (typeof Majiang === 'undefined') return { hand_str, shanten: null, decomps: null, tingpai: null };
+        try {
+            const sp      = Majiang.Shoupai.fromString(hand_str);
+            const shanten = Majiang.Util.xiangting(sp);
+            const tingpai = shanten <= 0 ? Majiang.Util.tingpai(sp) : null;
+            if (!tingpai || tingpai.length === 0) return { hand_str, shanten, decomps: null, tingpai: null };
+            const seen = new Set();
+            const decomps = [];
+            for (const p of tingpai) {
+                for (const d of Majiang.Util.hule_mianzi(sp, p + '+')) {
+                    const key = d.join('\t');
+                    if (!seen.has(key)) { seen.add(key); decomps.push(d); }
+                }
+            }
+            return { hand_str, shanten, decomps, tingpai };
+        } catch(_) {
+            return { hand_str, shanten: null, decomps: null, tingpai: null };
+        }
+    }
+
+    function make_block_display_data_v11(block_tenpai, tenpai_prob, probs_blended, melds) {
+        const to_dist      = p => [1 - p, p];
+        const triplet_dist = block_tenpai.triplet.map(to_dist);
+        const seq_dist     = block_tenpai.seq.map(to_dist);
+        const pair_dist    = block_tenpai.pair.map(to_dist);
+        const best         = get_best_tenpai_hand(probs_blended, melds);
+        return {
+            triplet_dist, seq_dist, pair_dist,
+            tenpai_prob,
+            hand_str: best?.hand_str ?? null,
+            shanten:  best?.shanten  ?? null,
+            decomps:  best?.decomps  ?? null,
+            tingpai:  best?.tingpai  ?? null,
+        };
     }
 
     /* ---- Phase2 分析 ---- */
@@ -580,11 +694,10 @@
 
                     // Stage 2: 手牌推定
                     const out  = await run_session(sessions.hand_inference, make_hi_features(state, target_l, yaku_probs, tenpai_prob));
-                    const flat = out['logits'].data;      // Float32Array [170] = 34×5
-                    const probs_per_tile = [];
-                    for (let tile = 0; tile < N_PAI; tile++) {
-                        probs_per_tile.push(softmax([flat[tile*5], flat[tile*5+1], flat[tile*5+2], flat[tile*5+3], flat[tile*5+4]]));
-                    }
+                    const flat    = out['logits'].data;      // Float32Array [170] = 34×5
+                    const n_melds = (state.melds_l[target_l] || []).filter(Boolean).length;
+                    const k_tiles = 13 - 3 * n_melds;
+                    const probs_per_tile = constrained_softmax_js(flat, k_tiles);
 
                     // 赤牌所持確率 (red_logits がある場合)
                     let aka = { m0: null, p0: null, s0: null };
@@ -597,8 +710,22 @@
                         };
                     }
 
-                    const block_ev = make_block_display_data(probs_per_tile, state.melds_l[target_l]);
-                    players.push({ l: target_l, rel, seat_name: SEAT_NAMES[rel - 1], probs_per_tile, aka, block_ev });
+                    // v11: block head outputs → ブレンド
+                    let probs_final = probs_per_tile;
+                    let block_ev;
+                    if (out['triplet_logits'] && out['seq_logits'] && out['pair_logits']) {
+                        const sigmoid = x => 1 / (1 + Math.exp(-x));
+                        const block_tenpai = {
+                            triplet: Array.from(out['triplet_logits'].data).map(sigmoid),
+                            seq:     Array.from(out['seq_logits'].data).map(sigmoid),
+                            pair:    Array.from(out['pair_logits'].data).map(sigmoid),
+                        };
+                        probs_final = blend_per_tile(probs_per_tile, block_tenpai, tenpai_prob ?? 0);
+                        block_ev = make_block_display_data_v11(block_tenpai, tenpai_prob, probs_final, state.melds_l[target_l]);
+                    } else {
+                        block_ev = make_block_display_data(probs_per_tile, state.melds_l[target_l]);
+                    }
+                    players.push({ l: target_l, rel, seat_name: SEAT_NAMES[rel - 1], probs_per_tile: probs_final, aka, block_ev });
                 }
                 result.hand_inference = { players };
             } catch(e) { console.warn('AI Phase2: hand_inference error', e); }
@@ -614,7 +741,7 @@
     async function load_sessions() {
         const s = {};
         const models = [
-            ['hand_inference', MODEL_BASE + 'hand_inference/v9/model.onnx'],
+            ['hand_inference', MODEL_BASE + 'hand_inference/v11/model.onnx'],
             ['behavior_clone', MODEL_BASE + 'behavior_clone/v2/model.onnx'],
             ['value_function', MODEL_BASE + 'value_function/v2/model.onnx'],
             ['yaku_inference',   MODEL_BASE + 'yaku_inference/v1/model.onnx'],
@@ -667,7 +794,8 @@
 
     if (typeof module !== 'undefined') {
         module.exports = { visible_counts_vec, red_visible_flags, red_discard_signal, pai_to_idx, encode_hand,
-                           compute_block_ev, get_best_hand_str, make_block_display_data };
+                           compute_block_ev, get_best_hand_str, make_block_display_data,
+                           block_to_per_tile_dist, blend_per_tile, make_block_display_data_v11 };
     }
 
 })();

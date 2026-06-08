@@ -412,6 +412,57 @@
         return exps.map(x => x / sum);
     }
 
+    // 制約付きソフトマックス: E[Σc_i] = k となる λ を二分探索で求め、
+    // 手牌枚数ルール (k = 13 - 3*n_melds) を出力層で構造的に保証する
+    function constrained_softmax_js(flat_logits, k) {
+        // flat_logits: Float32Array [170] (34×5 row-major, masked logits from ONNX)
+        // k: integer total tile count
+        // Returns: array[34] of array[5] probabilities with E[Σc_i] = k
+        function expected_sum(lam) {
+            let total = 0;
+            for (let t = 0; t < 34; t++) {
+                const base = t * 5;
+                let max_adj = -Infinity;
+                for (let c = 0; c < 5; c++) {
+                    const v = flat_logits[base + c] - lam * c;
+                    if (v > max_adj) max_adj = v;
+                }
+                let sum_exp = 0, weighted = 0;
+                for (let c = 0; c < 5; c++) {
+                    const e = Math.exp(flat_logits[base + c] - lam * c - max_adj);
+                    sum_exp += e;
+                    weighted += e * c;
+                }
+                total += weighted / sum_exp;
+            }
+            return total;
+        }
+        let lo = -20, hi = 20;
+        for (let i = 0; i < 50; i++) {
+            const mid = (lo + hi) / 2;
+            if (expected_sum(mid) > k) lo = mid; else hi = mid;
+        }
+        const lam = (lo + hi) / 2;
+        const result = [];
+        for (let t = 0; t < 34; t++) {
+            const base = t * 5;
+            let max_adj = -Infinity;
+            for (let c = 0; c < 5; c++) {
+                const v = flat_logits[base + c] - lam * c;
+                if (v > max_adj) max_adj = v;
+            }
+            let sum_exp = 0;
+            const exps = [];
+            for (let c = 0; c < 5; c++) {
+                const e = Math.exp(flat_logits[base + c] - lam * c - max_adj);
+                exps.push(e);
+                sum_exp += e;
+            }
+            result.push(exps.map(e => e / sum_exp));
+        }
+        return result;
+    }
+
     async function run_session(session, feats) {
         const tensor = new ort.Tensor('float32', feats, [1, feats.length]);
         return session.run({ features: tensor });
@@ -648,11 +699,10 @@
 
                     // Stage 2: 手牌推定
                     const out  = await run_session(sessions.hand_inference, make_hi_features(state, target_l, yaku_probs, tenpai_prob));
-                    const flat = out['logits'].data;      // Float32Array [170] = 34×5
-                    const probs_per_tile = [];
-                    for (let tile = 0; tile < N_PAI; tile++) {
-                        probs_per_tile.push(softmax([flat[tile*5], flat[tile*5+1], flat[tile*5+2], flat[tile*5+3], flat[tile*5+4]]));
-                    }
+                    const flat    = out['logits'].data;      // Float32Array [170] = 34×5
+                    const n_melds = (state.melds_l[target_l] || []).filter(Boolean).length;
+                    const k_tiles = 13 - 3 * n_melds;
+                    const probs_per_tile = constrained_softmax_js(flat, k_tiles);
 
                     // 赤牌所持確率 (red_logits がある場合)
                     let aka = { m0: null, p0: null, s0: null };

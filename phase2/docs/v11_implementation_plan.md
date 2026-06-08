@@ -551,3 +551,71 @@ probs_final = constrain_expected_total(probs_final, state.melds_l[target_l]);
 | ③ 推論時ハード制約 | 合計ズレを 0 に | 再学習不要 | **今すぐ実施** |
 | ① lambda 強化 | 学習挙動改善 | v11 再学習 | v11 に含める |
 | ② ノイズ除外 | データ品質改善 | データ再生成不要（フィルタのみ） | v11 に含める |
+
+---
+
+## 実装・実験ログ（2026-06-09）
+
+### 実施済み変更
+
+| 変更 | 内容 |
+|---|---|
+| `train_hand_inference_v11.py` | numpy ベース読み込み（OOM対策）、`constrained_softmax_probs`、`weighted_eae`、ノイズ除外、新評価指標6種 |
+| `ai_phase2.js`（browser + dist） | `constrained_softmax_js()` 追加 — 推論時に k 枚制約をハード保証 |
+| `gpu_temp()` 修正 | WSL・Windows ネイティブ両対応（nvidia-smi 候補パスを列挙） |
+
+### 実行した実験
+
+#### 実験A: 学習損失として EAE を使用 → 失敗
+- 設定: `loss = weighted_EAE + λ_red * CE_red + λ_block * block`
+- 結果:
+  - epoch1: train_eae=12.1535, val_eae=12.1269, val_acc=0.7107
+  - epoch2: train_eae=12.1146, **val_eae=12.1269（変化なし）**
+  - epoch3: train_eae=12.1147, **val_eae=12.1269（変化なし）**
+
+#### 失敗原因の分析
+
+`constrained_softmax` は各バッチで λ を二分探索して求め、**λ を定数として扱い勾配を計算**する。  
+しかしモデルパラメータ更新後には新しい logits に対して λ が再計算され変化する。
+
+→ モデルは「λ 固定前提の更新」をしているが、次ステップで λ が動く **「動く目標問題」** が生じた。  
+→ val_eae が 12.1269 に固着（epoch2-3 で bit-exact に同一）。
+
+補足実験（勾配比較）:
+
+```python
+# EAE (constrained, λ detached)  |grad| = 0.00929
+# NLL (raw softmax)               |grad| = 0.00116
+# → EAE gradient は NLL の約 8倍あるが、val 改善には繋がらない
+```
+
+val_acc = 0.7107 < baseline 0.7295 も確認。制約付きソフトマックスが確率を分散させ、
+ゼロ枚タイルを誤って 1枚と予測してしまう現象が発生。
+
+### 修正方針（次回学習で適用）
+
+**学習・評価の役割を分離する：**
+
+| 役割 | 手段 | 理由 |
+|---|---|---|
+| **学習損失** | NLL（通常ソフトマックス） | 勾配安定、λ問題なし |
+| **Early stopping** | val_eae（制約付きで計算） | 意味のある実用指標 |
+| **推論** | `constrained_softmax_js()` | k 枚ルールをハード保証 |
+
+`train_epoch` の損失を NLL に戻し、`eval_epoch` は val_eae を維持する。  
+GPU 温度が 65°C 以下になったら再学習を実施。
+
+### 再学習コマンド
+
+```bash
+# WSL から実行
+cd /mnt/c/Users/tetsu-4no/mahjong-AI/phase2
+/home/tetsu-4no/miniconda3/envs/mahjong/bin/python train/train_hand_inference_v11.py 2>&1 | tee /tmp/v11_train.log
+
+# Windows ターミナルから実行（conda 環境が有効な場合）
+cd C:\Users\tetsu-4no\mahjong-AI\phase2
+conda activate mahjong
+python train/train_hand_inference_v11.py
+```
+
+モニタリング: `/tmp/v11_train.log` または `phase2/models/hand_inference/v11/train_log.json`
