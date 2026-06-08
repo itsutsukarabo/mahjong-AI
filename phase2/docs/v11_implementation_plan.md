@@ -414,3 +414,140 @@ phase2/models/hand_inference/v11/model.onnx（出力 +3テンソル）
 - `label_block` が null（非テンパイ）のサンプルは `tenpai_mask=False` として block 損失をスキップ
 - `lambda_block` の最適値は学習後に eval で検証（初期値 0.3）
 - データ再生成が必要なため、v11 学習前に `node extract_features.js` を再実行すること
+
+---
+
+## 評価指標の見直し（v10 実測値をもとに）
+
+### 現行指標の問題
+
+`test_acc = 0.8847` は **per-tile 枚数クラスの正解率** (34タイル × Nサンプル) だが、
+ラベルの 72.9% が「0枚」であるため、**常に0と予測するだけで 72.95% が出る**。
+モデルとベースラインの差は +0.155 に過ぎず、実用的な進捗を反映しない。
+
+### v10 の実態（テストデータ 61,811 サンプルで計測）
+
+| 指標 | v10 値 | 備考 |
+|---|---|---|
+| 全体 accuracy（現行） | 0.8847 | ベースライン 0.7295 との差 +0.155 |
+| 非ゼロ Recall | **0.685** | 相手が持つ牌の 31.5% を見逃している |
+| 非ゼロ Precision | 0.897 | |
+| 非ゼロ F1 | 0.776 | |
+| ≥1枚タイルの MAE | 0.414 枚 | |
+| 手牌完全一致率 | **26.6%** | 3/4 は間違える |
+| 予測合計枚数 MAE | **3.04 枚** | 正解は常に k 枚（副露依存）なのにズレる |
+
+### 副露数別の予測合計 MAE（重要な発見）
+
+| 副露数 | 正解枚数 | 予測平均 | MAE |
+|---|---|---|---|
+| 0回（門前） | 13枚 | 8.7枚 | 3.39枚 ← 最悪 |
+| 1回 | 10枚 | 8.8枚 | 0.96枚 |
+| 2回 | 7枚 | 6.5枚 | 0.43枚 |
+| 3回 | 4枚 | 3.9枚 | 0.22枚 |
+
+副露が多いほど牌が見えているので推定しやすく、逆に門前手の推定が最も難しい。
+また、副露0・手牌合計0のサンプルが 4,107件（6.6%）あり、ゲーム終了後の残骸と思われる。
+これらは**学習ノイズ**になっているため除外すべき。
+
+### v11 で採用する評価指標セット
+
+```python
+eval_result = {
+    # 既存（後方互換のため維持）
+    "test_acc": ...,
+    "test_loss": ...,
+    "by_remaining_bucket": {...},
+
+    # 新規追加
+    "recall_nonzero":    ...,   # ★ メイン指標: 持ち牌の検出率
+    "precision_nonzero": ...,
+    "f1_nonzero":        ...,   # ★ サブ指標
+    "mae_nonzero":       ...,   # ≥1枚タイルの枚数予測誤差
+    "hand_exact_acc":    ...,   # 手牌完全一致率
+    "pred_total_mae":    ...,   # 合計枚数のズレ（理想は 0）
+}
+```
+
+---
+
+## 合計枚数ズレの改善計画
+
+### 背景
+
+手牌の合計枚数 `k` は盤面から確定的に求まる:
+
+```
+k = 13 - 3 × (n_chi + n_pon + n_kan)
+```
+
+現行の学習では `lambda_global_sum = 0.05` でソフト制約しているが弱すぎる（CE 損失スケールの 1/6 程度）。
+
+### 対応①: 学習時のソフト制約強化（v11 で実施）
+
+`lambda_global_sum` を `0.05 → 0.5` に引き上げ、合計ペナルティを 10 倍強化する。
+
+```python
+LAMBDA_GLOBAL_SUM = 0.5   # v10: 0.05
+```
+
+### 対応②: 学習ノイズ除外（v11 で実施）
+
+`label_hand.sum() == 0 かつ n_melds == 0` のサンプル（約 0.7%）を学習から除外する。
+これらはゲーム終了後などの残骸レコードで、学習に有害。
+
+```python
+# HandInferenceDataset の初期化前にフィルタ
+data = [s for s in data if sum(s['label_hand']) > 0 or
+        (s['features'][78] + s['features'][79] + s['features'][80]) > 0]
+```
+
+ただし `n_melds > 0` かつ合計が `13 - 3*n_melds` と一致しないサンプルも同様に除外する。
+
+### 対応③: 推論時ハード制約（再学習不要、即時適用可能）
+
+盤面から `k` が確定するため、推論後に**期待値をリスケール**することで合計を完全に担保できる。
+これは `ai_phase2.js` の後処理として実装する（モデル変更不要）。
+
+```javascript
+function constrain_expected_total(probs_per_tile, melds) {
+    const n_melds = (melds || []).filter(Boolean).length;
+    const k = 13 - 3 * n_melds;  // 手牌合計枚数（確定値）
+
+    // E[c_i] = Σ j * P(c_i = j)
+    const expected = probs_per_tile.map(p =>
+        p.reduce((s, prob, cnt) => s + prob * cnt, 0)
+    );
+    const current_sum = expected.reduce((a, b) => a + b, 0);
+    if (current_sum < 0.001) return probs_per_tile;
+
+    const scale = k / current_sum;
+
+    // 各タイルの期待値を scale し、最近傍整数への確率集中で分布を再構成
+    return probs_per_tile.map((p, i) => {
+        const e_scaled = Math.min(4, Math.max(0, expected[i] * scale));
+        const lo = Math.floor(e_scaled);
+        const hi = Math.min(4, lo + 1);
+        const w_hi = e_scaled - lo;
+        const out = [0, 0, 0, 0, 0];
+        out[lo] += (1 - w_hi);
+        out[hi] += w_hi;
+        return out;
+    });
+}
+```
+
+呼び出し側（推論フロー）:
+
+```javascript
+// blend_per_tile の後、probs_final に適用
+probs_final = constrain_expected_total(probs_final, state.melds_l[target_l]);
+```
+
+### 優先度
+
+| 対応 | 効果 | コスト | 優先度 |
+|---|---|---|---|
+| ③ 推論時ハード制約 | 合計ズレを 0 に | 再学習不要 | **今すぐ実施** |
+| ① lambda 強化 | 学習挙動改善 | v11 再学習 | v11 に含める |
+| ② ノイズ除外 | データ品質改善 | データ再生成不要（フィルタのみ） | v11 に含める |
