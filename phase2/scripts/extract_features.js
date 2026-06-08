@@ -653,7 +653,11 @@ async function main() {
     console.log(`  tenpai_inference: ${ti_cnt} サンプル → ${path.join(DEST, 'tenpai_inference.ndjson')}`);
 }
 
-main().catch(err => {
-    console.error(err);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch(err => {
+        console.error(err);
+        process.exit(1);
+    });
+} else {
+    module.exports = { red_visible_flags, red_discard_signal, visible_counts_vec, pai_to_idx };
+}

@@ -417,6 +417,103 @@
         return session.run({ features: tensor });
     }
 
+    /* ---- ブロック期待値計算 (TICKET-027) ---- */
+
+    function compute_block_ev(probs) {
+        // P(tile の count ≥ k) のヘルパー
+        const p_ge = (p, k) => { let s = 0; for (let i = k; i < 5; i++) s += p[i]; return s; };
+
+        // 刻子分布: [P(0刻子), P(1刻子)]
+        // 同種牌の刻子は最大1個 (count≥3 で成立)
+        const triplet_dist = probs.map(p => [
+            p[0] + p[1] + p[2],
+            p[3] + p[4],
+        ]);
+
+        // 対子分布: [P(0対子), P(1対子), P(2対子)]
+        // 4枚持ちのみ2対子が成立
+        const pair_dist = probs.map(p => [
+            p[0] + p[1],
+            p[2] + p[3],
+            p[4],
+        ]);
+
+        // 順子分布: [P(0順子), P(1順子), P(2順子), P(3順子以上)]
+        // 独立近似: P(≥k順子) ≈ P(tile_a≥k) × P(tile_b≥k) × P(tile_c≥k)
+        // インデックス: suit*7+n (m123=0, m234=1, ..., s789=20)
+        const seq_dist = [];
+        for (let suit = 0; suit < 3; suit++) {
+            const base = suit * 9;
+            for (let n = 0; n < 7; n++) {
+                const a = probs[base + n    ];
+                const b = probs[base + n + 1];
+                const c = probs[base + n + 2];
+                const ge1 = p_ge(a,1) * p_ge(b,1) * p_ge(c,1);
+                const ge2 = p_ge(a,2) * p_ge(b,2) * p_ge(c,2);
+                const ge3 = p_ge(a,3) * p_ge(b,3) * p_ge(c,3);
+                seq_dist.push([
+                    Math.max(0, 1 - ge1),
+                    Math.max(0, ge1 - ge2),
+                    Math.max(0, ge2 - ge3),
+                    Math.max(0, ge3),
+                ]);
+            }
+        }
+        return { triplet_dist, pair_dist, seq_dist };
+    }
+
+    function get_best_hand_str(probs, melds) {
+        // per-tile 確率の argmax から最尤手牌の Shoupai 形式文字列を構築する
+        const suits = ['m', 'p', 's', 'z'];
+        const bases  = [0, 9, 18, 27];
+        const sizes  = [9, 9, 9, 7];
+        let hand = '';
+        for (let s = 0; s < 4; s++) {
+            let part = '', any = false;
+            for (let n = 0; n < sizes[s]; n++) {
+                const p   = probs[bases[s] + n];
+                const cnt = p.indexOf(Math.max(...p));   // argmax = 最尤枚数
+                if (cnt > 0) {
+                    part += String(n + 1).repeat(cnt);
+                    any = true;
+                }
+            }
+            if (any) hand += suits[s] + part;
+        }
+        const meld_str = (melds || []).filter(Boolean).join(',');
+        return meld_str ? hand + ',' + meld_str : hand;
+    }
+
+    function make_block_display_data(probs, melds) {
+        // ブロック期待値・最尤手牌・シャンテン数・面子分解をまとめて返す
+        // シャンテン数・面子分解は Majiang グローバルが利用できる場合のみ計算する
+        const ev       = compute_block_ev(probs);
+        const hand_str = get_best_hand_str(probs, melds);
+        let shanten = null, tingpai = null, decomps = null;
+
+        if (typeof Majiang !== 'undefined') {
+            try {
+                const sp = Majiang.Shoupai.fromString(hand_str);
+                shanten  = Majiang.Util.xiangting(sp);
+                if (shanten <= 0) {
+                    tingpai = Majiang.Util.tingpai(sp);
+                    if (tingpai.length > 0) {
+                        // 全待ち牌に対する面子分解を列挙し、重複を除去する
+                        const seen = new Set();
+                        decomps = [];
+                        for (const p of tingpai) {
+                            for (const d of Majiang.Util.hule_mianzi(sp, p)) {
+                                const key = d.join('\t');
+                                if (!seen.has(key)) { seen.add(key); decomps.push(d); }
+                            }
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
+        return { ...ev, hand_str, shanten, tingpai, decomps };
+    }
+
     /* ---- Phase2 分析 ---- */
 
     const SCORE_SCALE = 10000.0;
@@ -500,7 +597,8 @@
                         };
                     }
 
-                    players.push({ l: target_l, rel, seat_name: SEAT_NAMES[rel - 1], probs_per_tile, aka });
+                    const block_ev = make_block_display_data(probs_per_tile, state.melds_l[target_l]);
+                    players.push({ l: target_l, rel, seat_name: SEAT_NAMES[rel - 1], probs_per_tile, aka, block_ev });
                 }
                 result.hand_inference = { players };
             } catch(e) { console.warn('AI Phase2: hand_inference error', e); }
@@ -559,10 +657,17 @@
         console.log('AI Phase2: initialized');
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
+    if (typeof document !== 'undefined') {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    }
+
+    if (typeof module !== 'undefined') {
+        module.exports = { visible_counts_vec, red_visible_flags, red_discard_signal, pai_to_idx, encode_hand,
+                           compute_block_ev, get_best_hand_str, make_block_display_data };
     }
 
 })();
