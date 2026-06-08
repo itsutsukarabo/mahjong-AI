@@ -1,0 +1,33 @@
+{
+  "name": "@kobalab/majiang-ui",
+  "version": "1.6.0",
+  "description": "麻雀UIライブラリ",
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kobalab/majiang-ui.git"
+  },
+  "keywords": [
+    "麻雀",
+    "電脳麻将"
+  ],
+  "author": "Satoshi Kobayashi",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/kobalab/majiang-ui/issues"
+  },
+  "homepage": "https://github.com/kobalab/majiang-ui#readme",
+  "dependencies": {
+    "@kobalab/majiang-ai": "^1.1.0",
+    "@kobalab/majiang-core": "file:../majiang-core",
+    "@kobalab/tenhou-url-log": "^1.0.4",
+    "jquery": "^3.7.1",
+    "jquery-ui": "^1.14.1"
+  }
+}

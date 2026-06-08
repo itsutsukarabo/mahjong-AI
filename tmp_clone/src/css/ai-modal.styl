@@ -289,17 +289,63 @@
       .ai-hi-p4
         color #f44
 
-    .ai-hi-aka-section
-      margin-top 4px
-      font-size 10px
-      .ai-hi-aka-label
-        color #888
-      .ai-hi-aka-tile
-        margin-right 8px
+    .ai-hi-aka-th
+      color #f66
+      background #2a1a1a
+
+    .ai-hi-aka-td
+      background #1e1212
+      text-align center
+      .ai-hi-aka-prob
         font-family monospace
-        color #aaa
-      .ai-hi-aka-na
+        color #f66
+        font-size 9px
+      &.ai-hi-aka-na
         color #555
+        font-size 9px
+
+    // ブロック期待値セクション
+    .ai-hi-block-section
+      margin-top 8px
+      border-top 1px solid #3a3a3a
+      padding-top 6px
+
+      .ai-hi-block-label
+        font-size 10px
+        color #888
+        margin-bottom 4px
+
+      .ai-hi-block-table
+        font-size 8px
+        margin-bottom 6px
+        th, td
+          min-width 44px
+        .ai-hi-block-empty
+          background none
+          border none
+
+      .ai-hi-probs
+        .ai-hi-b0
+          color #555
+        .ai-hi-b1
+          color #fa4
+        .ai-hi-b2
+          color #f84
+        .ai-hi-b3
+          color #f44
+
+      .ai-hi-best-hand
+        margin-top 4px
+        font-size 10px
+        .ai-hi-shanten-label
+          color #888
+        .ai-hi-decomp
+          font-family monospace
+          color #aaa
+          margin-top 1px
+        .ai-hi-hand-str
+          font-family monospace
+          color #aaa
 
     .ai-p2-na
       font-size 11px

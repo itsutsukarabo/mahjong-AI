@@ -16,7 +16,12 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testMatch": ["**/test/**/*.test.js"]
+    "testMatch": [
+      "**/test/**/*.test.js"
+    ],
+    "modulePaths": [
+      "<rootDir>/node_modules"
+    ]
   },
   "repository": {
     "type": "git",
@@ -42,7 +47,9 @@
   "dependencies": {
     "@kobalab/majiang-ai": "^1.1.0",
     "@kobalab/majiang-core": "file:../majiang-core",
-    "@kobalab/majiang-ui": "^1.6.0",
-    "jquery": "^3.7.1"
+    "@kobalab/majiang-ui": "file:../majiang-ui-local",
+    "@kobalab/tenhou-url-log": "^1.0.4",
+    "jquery": "^3.7.1",
+    "jquery-ui": "^1.14.2"
   }
 }

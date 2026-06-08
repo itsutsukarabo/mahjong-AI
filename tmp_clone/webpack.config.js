@@ -1,3 +1,4 @@
+const path = require('path');
 const version = require('./package.json').version;
 
 const TerserPlugin = require("terser-webpack-plugin");
@@ -19,6 +20,9 @@ module.exports = {
     output: {
         path:     __dirname + '/dist/js/',
         filename: `[name]-${version}.js`
+    },
+    resolve: {
+        modules: [path.resolve(__dirname, 'node_modules'), 'node_modules'],
     },
     optimization: {
         minimizer: [ new TerserPlugin({extractComments: false}) ],
