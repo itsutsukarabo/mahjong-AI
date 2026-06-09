@@ -1,5 +1,5 @@
 """
-手牌類推モデル v11: v10 にブロックヘッド（刻子/順子/対子）を追加
+手牌類推モデル v12: v11 に学習時制約付きソフトマックス + MSE合計ペナルティ復活
 
 入力 (374次元): v10 と同一
 
@@ -41,7 +41,7 @@ from torch.utils.data import Dataset, DataLoader
 # ---- 設定 ----
 
 DATA_DIR  = Path(__file__).parent.parent / "data" / "features"
-MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v11"
+MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v12"
 
 CONFIG = {
     "input_dim":    374,
@@ -66,6 +66,7 @@ GPU_COOL_INTERVAL  = 20
 
 LAMBDA_RED_CE      = 0.3
 LAMBDA_RED_CONS    = 0.1
+LAMBDA_SUM         = 0.5   # 合計枚数MSEペナルティ（v10と同値）
 
 BLOCK_DIM = 89  # triplet(34) + seq(21) + pair(34)
 
@@ -292,15 +293,25 @@ def train_epoch(model, loader, optimizer, device):
 
         logits, _, red_logits, tri_logits, seq_logits, pair_logits = model(features)
 
-        # メイン損失: NLL (raw softmax) — λ の「動く目標問題」を回避
-        loss_nll = F.cross_entropy(logits.reshape(-1, 5), labels.reshape(-1))
+        count_vals = torch.arange(5, device=device, dtype=torch.float32)
+        k          = labels.float().sum(dim=-1).long()
+
+        # ① 制約付きソフトマックスで NLL（訓練・評価を揃える）
+        lam        = find_lambda(logits, k.float())                        # detached
+        adj        = logits - lam.view(-1, 1, 1) * count_vals
+        loss_nll   = F.cross_entropy(adj.reshape(-1, 5), labels.reshape(-1))
+
+        # ② MSE合計ペナルティ（raw softmax で勾配を安定させる）
+        probs_raw  = F.softmax(logits, dim=-1)
+        pred_sum   = (probs_raw * count_vals).sum(-1).sum(-1)              # (B,)
+        loss_sum   = F.mse_loss(pred_sum, k.float())
 
         loss_red_ce = F.cross_entropy(red_logits.reshape(-1, 2), labels_red.reshape(-1))
 
-        probs_for_cons = F.softmax(logits, dim=-1)
-        prob_has_red   = F.softmax(red_logits, dim=-1)[:, :, 1]
-        prob_cnt_ge1   = 1 - probs_for_cons[:, five_idx, 0]
-        loss_red_cons  = F.relu(prob_has_red - prob_cnt_ge1).mean()
+        probs_constrained = constrained_softmax_probs(logits, k)
+        prob_has_red      = F.softmax(red_logits, dim=-1)[:, :, 1]
+        prob_cnt_ge1      = 1 - probs_constrained[:, five_idx, 0]
+        loss_red_cons     = F.relu(prob_has_red - prob_cnt_ge1).mean()
 
         # block 損失（tenpai サンプルのみ）
         block_loss = 0.0
@@ -317,6 +328,7 @@ def train_epoch(model, loader, optimizer, device):
                           F.binary_cross_entropy_with_logits(pai, t_pai)) / 3
 
         loss = (loss_nll
+                + LAMBDA_SUM      * loss_sum
                 + LAMBDA_RED_CE   * loss_red_ce
                 + LAMBDA_RED_CONS * loss_red_cons
                 + CONFIG["lambda_block"] * block_loss)
