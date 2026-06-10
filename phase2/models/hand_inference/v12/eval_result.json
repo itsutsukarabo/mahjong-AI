@@ -1,0 +1,48 @@
+{
+  "test_eae": 14.67687114739568,
+  "test_acc": 0.7235419623624919,
+  "by_remaining_bucket": {
+    "early": {
+      "acc": 0.6923850574712643,
+      "eae": 16.831268715339732,
+      "n": 24360
+    },
+    "mid": {
+      "acc": 0.7370562619458464,
+      "eae": 14.750221576252331,
+      "n": 20897
+    },
+    "late": {
+      "acc": 0.7599968193946248,
+      "eae": 13.494895618265309,
+      "n": 9987
+    },
+    "endgame": {
+      "acc": 0.7703191879662468,
+      "eae": 12.583984055786768,
+      "n": 2405
+    }
+  },
+  "weighted_eae": 14.6769,
+  "recall_nonzero": 0.1888,
+  "precision_nonzero": 0.6693,
+  "f1_nonzero": 0.2945,
+  "mae_nonzero": 1.0484,
+  "hand_exact_acc": 0.0,
+  "pred_total_mae": 9.3187,
+  "config": {
+    "input_dim": 374,
+    "d_model": 256,
+    "nhead": 4,
+    "num_layers": 3,
+    "n_pai": 34,
+    "n_count_cls": 5,
+    "dropout": 0.1,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch_size": 512,
+    "epochs": 200,
+    "early_stop_patience": 7,
+    "lambda_block": 0.3
+  }
+}

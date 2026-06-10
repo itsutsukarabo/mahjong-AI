@@ -1,0 +1,47 @@
+{
+  "test_eae": 6.642520049111344,
+  "test_acc": 0.8520192687389098,
+  "by_remaining_bucket": {
+    "early": {
+      "acc": 0.7431686467690525,
+      "eae": 14.2168120265215,
+      "n": 24360
+    },
+    "mid": {
+      "acc": 0.9121827225410909,
+      "eae": 6.028408132024581,
+      "n": 20897
+    },
+    "late": {
+      "acc": 0.9640473792400709,
+      "eae": 2.716630132992004,
+      "n": 9987
+    },
+    "endgame": {
+      "acc": 0.9665892136480372,
+      "eae": 2.357699821086062,
+      "n": 2405
+    }
+  },
+  "weighted_eae": 6.6425,
+  "recall_nonzero": 0.6191,
+  "precision_nonzero": 0.868,
+  "f1_nonzero": 0.7227,
+  "mae_nonzero": 0.4979,
+  "hand_exact_acc": 0.1691,
+  "pred_total_mae": 3.8522,
+  "config": {
+    "input_dim": 374,
+    "d_model": 256,
+    "nhead": 4,
+    "num_layers": 3,
+    "n_pai": 34,
+    "n_count_cls": 5,
+    "dropout": 0.1,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch_size": 512,
+    "epochs": 200,
+    "early_stop_patience": 7
+  }
+}
