@@ -1,13 +1,14 @@
 """
-手牌類推モデル v15: 3プレイヤー同時推測 (102トークン Transformer)
+手牌類推モデル v16
 
-v14からの変更点:
-  - 入力: (B, 374) × 3回 → (B, 3, 374) × 1回
-  - アーキテクチャ: 34トークン → 102トークン (34 × 3プレイヤー)
-  - 出力: (B, 34, 5) → (B, 3, 34, 5)
-  - 損失: NLL + MSE合計(λ=0.05) + タイル横断制約(λ=0.1) + 赤牌(λ=0.3)
-  - val_eae: 3プレイヤー合計（平均）でearly stopping
-  - データ: hand_inference_v15.ndjson (features: [[374]*3], label_hand: [[34]*3])
+v15からの変更点:
+  - 牌間 self-attention: Transformer出力 → 34牌間 Attention → 分類ヘッド
+      同一プレイヤー内の牌同士の整合性（字牌 count=1 の抑制等）を自動学習
+  - 字牌×聴牌制約 loss: tenpai_prob × P(字牌=1枚) をペナルティ
+      聴牌時に字牌を1枚だけ持つのは構造上ほぼ不可能という事前知識を注入
+  - DP デコード: argmax → 合計枚数制約付き最適割り当て
+      Σ count_i = k（手牌枚数）を保証し pred_total_mae を構造的に 0 にする
+      EAE は確率分布から計算するため DP デコードの影響を受けない
 """
 
 import gc
@@ -27,26 +28,29 @@ from torch.utils.data import Dataset, DataLoader
 # ---- 設定 ----
 
 DATA_DIR  = Path(__file__).parent.parent / "data" / "features"
-MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v15"
+MODEL_DIR = Path(__file__).parent.parent / "models" / "hand_inference" / "v16"
 
 CONFIG = {
-    "input_dim":    374,
-    "d_model":      256,
-    "nhead":        4,
-    "num_layers":   3,
-    "n_pai":        34,
-    "n_count_cls":  5,
-    "n_players":    3,
-    "dropout":      0.1,
-    "lr":           1e-3,
-    "weight_decay": 1e-4,
-    "batch_size":   256,
-    "epochs":       200,
+    "input_dim":        374,
+    "d_model":          256,
+    "nhead":            4,
+    "num_layers":       3,
+    "tile_attn_nhead":  4,
+    "n_pai":            34,
+    "n_count_cls":      5,
+    "n_players":        3,
+    "dropout":          0.1,
+    "lr":               1e-3,
+    "weight_decay":     1e-4,
+    "batch_size":       256,
+    "epochs":           200,
     "early_stop_patience": 7,
 }
 
 VISIBLE_OFFSET     = 185
 REMAINING_OFFSET   = 94
+TENPAI_OFFSET      = 373   # 特徴量末尾: tenpai_prob (add_tenpai_features.py で付与)
+HONOR_START        = 27    # 字牌開始インデックス (27-33 の 7 種)
 GPU_TEMP_THRESHOLD = 65
 GPU_COOL_INTERVAL  = 20
 
@@ -54,6 +58,7 @@ LAMBDA_SUM         = 0.05
 LAMBDA_CROSS       = 0.1
 LAMBDA_RED_CE      = 0.3
 LAMBDA_RED_CONS    = 0.1
+LAMBDA_HONOR       = 1.0   # 字牌×聴牌制約
 GRAD_CLIP_NORM     = 1.0
 
 REMAINING_BUCKETS = {
@@ -64,7 +69,7 @@ REMAINING_BUCKETS = {
 }
 
 
-# ---- 制約付きソフトマックス (eval用) ----
+# ---- 制約付きソフトマックス (EAE計算用) ----
 
 def find_lambda(logits, k_float, n_iter=50):
     count_vals = torch.arange(5, device=logits.device, dtype=torch.float32)
@@ -89,8 +94,62 @@ def constrained_softmax_probs(logits, k):
     return F.softmax(adj, dim=-1)
 
 
+# ---- DP デコード (pred_total_mae を構造的に 0 にする) ----
+
+@torch.no_grad()
+def dp_decode(logits, k):
+    """
+    合計枚数制約付き最適手牌割り当て。
+    logits: (B, 34, 5) — マスク済みロジット
+    k:      (B,)        — 各サンプルの手牌合計枚数
+    戻り値: (B, 34) int64  sum(dim=-1) == k が保証される
+
+    目的: maximize Σ_i log P(count_i) s.t. Σ_i count_i = k
+    計算量: O(B × 34 × 5 × k_max) ≈ O(B × 2200)
+    """
+    B, N, C = logits.shape
+    K_max = int(k.max().item())
+    NEG_INF = -1e9
+
+    log_probs = F.log_softmax(logits, dim=-1).cpu()  # (B, 34, 5)
+    k_cpu = k.cpu()
+
+    # dp[b, j]: タイル 0..i-1 を合計 j 枚に割り当てたときの最大 log-prob
+    dp = torch.full((B, K_max + 1), NEG_INF)
+    dp[:, 0] = 0.0
+
+    # choice[i, b, j_to]: タイル i で合計 j_to に到達したときに選んだ枚数
+    choices = torch.zeros(N, B, K_max + 1, dtype=torch.long)
+
+    for i in range(N):
+        new_dp = torch.full_like(dp, NEG_INF)
+        for c in range(C):
+            jf_max = K_max - c
+            if jf_max < 0:
+                continue
+            # dp[:, 0..jf_max] + log P(count=c) → new_dp[:, c..K_max]
+            val = dp[:, :jf_max + 1] + log_probs[:, i, c].unsqueeze(-1)  # (B, jf_max+1)
+            sl = slice(c, c + jf_max + 1)
+            better = val > new_dp[:, sl]
+            new_dp[:, sl]      = torch.where(better, val,                      new_dp[:, sl])
+            choices[i, :, sl]  = torch.where(better, torch.tensor(c, dtype=torch.long), choices[i, :, sl])
+        dp = new_dp
+
+    # バックトラック
+    preds = torch.zeros(B, N, dtype=torch.long)
+    remaining = k_cpu.clone()
+    b_idx = torch.arange(B)
+    for i in range(N - 1, -1, -1):
+        c = choices[i, b_idx, remaining]   # (B,)
+        preds[:, i] = c
+        remaining -= c
+
+    return preds  # CPU tensor
+
+
+# ---- ユーティリティ ----
+
 def get_stage_weights(features):
-    # features: (B, 374) — 1プレイヤー分
     remaining = (features[:, REMAINING_OFFSET] * 70).round().long()
     w = torch.ones(len(features), device=features.device)
     w[remaining <= 10] = 4.0
@@ -145,9 +204,6 @@ def wait_for_cool():
 
 class HandInferenceDataset(Dataset):
     def __init__(self, features, labels, labels_red):
-        # features:   (N, 3, 374)
-        # labels:     (N, 3, 34)
-        # labels_red: (N, 3, 3)
         self.features   = torch.as_tensor(features,   dtype=torch.float32)
         self.labels     = torch.as_tensor(labels,     dtype=torch.long).clamp(0, 4)
         self.labels_red = torch.as_tensor(labels_red, dtype=torch.long)
@@ -161,8 +217,8 @@ class HandInferenceDataset(Dataset):
 
 # ---- モデル ----
 
-class HandInferenceV15(nn.Module):
-    def __init__(self, input_dim, d_model, nhead, num_layers,
+class HandInferenceV16(nn.Module):
+    def __init__(self, input_dim, d_model, nhead, num_layers, tile_attn_nhead,
                  n_pai=34, n_count_cls=5, n_players=3, dropout=0.1):
         super().__init__()
         self.n_pai       = n_pai
@@ -190,6 +246,12 @@ class HandInferenceV15(nn.Module):
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
+        # 牌間 self-attention（ヘッド直前: 同一プレイヤー内 34 牌間の整合性）
+        self.tile_attn = nn.MultiheadAttention(
+            d_model, tile_attn_nhead, dropout=dropout, batch_first=True
+        )
+        self.tile_norm = nn.LayerNorm(d_model)
+
         # 出力ヘッド（プレイヤー間で重み共有）
         self.head     = nn.Linear(d_model, n_count_cls)
         self.red_head = nn.Linear(d_model, 2)
@@ -203,35 +265,41 @@ class HandInferenceV15(nn.Module):
         # x: (B, 3, 374)
         B, P, F = x.shape
 
-        # 1. グローバルエンコード（プレイヤー間で重み共有: reshape で BatchNorm に対応）
+        # 1. グローバルエンコード
         g = self.global_encoder(x.reshape(B * P, F)).reshape(B, P, -1)  # (B, 3, d_model)
 
         # 2. 102トークンを構築
-        tile_emb   = self.tile_embed(self.tile_ids)                           # (34, d_model)
-        player_emb = self.player_embed(self.player_ids)                       # (3,  d_model)
+        tile_emb   = self.tile_embed(self.tile_ids)
+        player_emb = self.player_embed(self.player_ids)
         vis        = x[:, :, VISIBLE_OFFSET:VISIBLE_OFFSET + self.n_pai]      # (B, 3, 34)
         vis_emb    = self.visible_proj(vis.unsqueeze(-1))                     # (B, 3, 34, d_model)
 
-        tokens = (g.unsqueeze(2)                    # (B, 3,  1, d_model)
-                + tile_emb                          # (34, d_model) → broadcast (1, 1, 34, d_model)
-                + player_emb.view(1, P, 1, -1)      # (1, 3,  1, d_model)
-                + vis_emb)                          # (B, 3, 34, d_model)
+        tokens = (g.unsqueeze(2)
+                + tile_emb
+                + player_emb.view(1, P, 1, -1)
+                + vis_emb)
         tokens = tokens.reshape(B, P * self.n_pai, -1)   # (B, 102, d_model)
 
-        # 3. Transformer（102トークン間でAttention）
+        # 3. Transformer（102トークン間でクロスプレイヤー Attention）
         out = self.transformer(tokens)               # (B, 102, d_model)
         out = out.reshape(B, P, self.n_pai, -1)      # (B, 3, 34, d_model)
 
-        # 4. 枚数分類ヘッド
+        # 4. 牌間 self-attention（プレイヤーごとに 34 牌間で Attention）
+        out_flat = out.reshape(B * P, self.n_pai, -1)         # (B*3, 34, d_model)
+        attn_out, _ = self.tile_attn(out_flat, out_flat, out_flat)
+        out_flat = self.tile_norm(out_flat + attn_out)         # residual
+        out = out_flat.reshape(B, P, self.n_pai, -1)           # (B, 3, 34, d_model)
+
+        # 5. 枚数分類ヘッド
         logits_raw = self.head(out)                  # (B, 3, 34, 5)
 
-        # 5. マスク（visible枚数を超える予測を -inf に）
-        vis_raw          = (vis * 4).round().long().clamp(0, 4)             # (B, 3, 34)
+        # 6. マスク（visible枚数を超える予測を -inf に）
+        vis_raw          = (vis * 4).round().long().clamp(0, 4)
         hidden_remaining = (4 - vis_raw).clamp(min=0)
-        mask = self.count_range > hidden_remaining.unsqueeze(-1)           # (B, 3, 34, 5)
+        mask = self.count_range > hidden_remaining.unsqueeze(-1)
         logits = logits_raw.masked_fill(mask, float('-inf'))
 
-        # 6. 赤牌ヘッド（5m/5p/5s × 3プレイヤー）
+        # 7. 赤牌ヘッド（5m/5p/5s × 3プレイヤー）
         red_tokens = out[:, :, self.red_tile_idx, :]   # (B, 3, 3, d_model)
         red_logits = self.red_head(red_tokens)          # (B, 3, 3, 2)
 
@@ -254,33 +322,39 @@ def train_epoch(model, loader, optimizer, device):
 
         _, logits_raw, red_logits = model(features)
 
-        # ① NLL（3プレイヤー合計平均）
+        # ① NLL
         loss_nll = F.cross_entropy(logits_raw.reshape(-1, model.n_count_cls), labels.reshape(-1))
 
-        # ② MSE合計制約（プレイヤーごと: E[Σ c_i] ≈ k）
-        probs    = F.softmax(logits_raw, dim=-1)           # (B, 3, 34, 5)
+        # ② MSE合計制約（プレイヤーごと）
+        probs    = F.softmax(logits_raw, dim=-1)
         pred_sum = (probs * count_vals).sum(-1)            # (B, 3, 34)
-        loss_sum = F.mse_loss(pred_sum.sum(-1), labels.float().sum(-1))  # (B,3) vs (B,3)
+        loss_sum = F.mse_loss(pred_sum.sum(-1), labels.float().sum(-1))
 
         # ③ タイル横断制約（3人合計 ≤ 残り枚数）
-        pred_tile_total = pred_sum.sum(dim=1)              # (B, 34)
-        visible_counts  = features[:, 0, VISIBLE_OFFSET:VISIBLE_OFFSET + model.n_pai] * 4  # (B, 34)
+        pred_tile_total = pred_sum.sum(dim=1)
+        visible_counts  = features[:, 0, VISIBLE_OFFSET:VISIBLE_OFFSET + model.n_pai] * 4
         max_hidden      = (4 - visible_counts).clamp(min=0)
         loss_cross      = F.relu(pred_tile_total - max_hidden).mean()
 
         # ④ 赤牌損失
         loss_red_ce = F.cross_entropy(red_logits.reshape(-1, 2), labels_red.reshape(-1))
 
-        # ⑤ 赤牌整合性制約（P(赤あり) ≤ P(枚数≥1)）
-        prob_has_red  = F.softmax(red_logits, dim=-1)[:, :, :, 1]   # (B, 3, 3)
-        prob_cnt_ge1  = 1 - probs[:, :, five_idx, 0]                 # (B, 3, 3)
+        # ⑤ 赤牌整合性制約
+        prob_has_red  = F.softmax(red_logits, dim=-1)[:, :, :, 1]
+        prob_cnt_ge1  = 1 - probs[:, :, five_idx, 0]
         loss_red_cons = F.relu(prob_has_red - prob_cnt_ge1).mean()
+
+        # ⑥ 字牌×聴牌制約: 聴牌時に字牌 count=1 はほぼ不可能
+        tenpai_prob  = features[:, :, TENPAI_OFFSET]                    # (B, 3)
+        honor_prob_1 = F.softmax(logits_raw[:, :, HONOR_START:], dim=-1)[..., 1]  # (B, 3, 7)
+        loss_honor   = (tenpai_prob.unsqueeze(-1) * honor_prob_1).mean()
 
         loss = (loss_nll
                 + LAMBDA_SUM      * loss_sum
                 + LAMBDA_CROSS    * loss_cross
                 + LAMBDA_RED_CE   * loss_red_ce
-                + LAMBDA_RED_CONS * loss_red_cons)
+                + LAMBDA_RED_CONS * loss_red_cons
+                + LAMBDA_HONOR    * loss_honor)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_NORM)
         optimizer.step()
@@ -292,7 +366,7 @@ def train_epoch(model, loader, optimizer, device):
 
 @torch.no_grad()
 def eval_epoch(model, loader, device):
-    """Returns (val_eae, val_acc): val_eae が early stopping 指標 (3プレイヤー平均)"""
+    """val_eae (3プレイヤー平均) を返す。EAE は constrained softmax の確率分布から計算。"""
     model.eval()
     total_wsum = 0.0
     total_w    = 0.0
@@ -301,7 +375,7 @@ def eval_epoch(model, loader, device):
 
     for features, labels, labels_red in loader:
         features, labels = features.to(device), labels.to(device)
-        logits, _, _ = model(features)   # (B, 3, 34, 5)
+        logits, _, _ = model(features)
 
         for p in range(3):
             k_p     = labels[:, p].float().sum(dim=-1).long()
@@ -312,7 +386,8 @@ def eval_epoch(model, loader, device):
             total_wsum += eae_val.item() * stage_w.sum().item()
             total_w    += stage_w.sum().item()
 
-            preds_p = probs_p.argmax(dim=-1)
+            # 精度は DP デコードで評価
+            preds_p = dp_decode(logits[:, p], k_p).to(device)
             correct += (preds_p == labels[:, p]).sum().item()
             total   += labels[:, p].numel()
 
@@ -329,17 +404,15 @@ def eval_by_remaining(model, loader, device):
     for features, labels, labels_red in loader:
         features, labels = features.to(device), labels.to(device)
         logits, _, _ = model(features)
-
-        # 残り牌数は全プレイヤーで共通（同一ゲーム状態）
         remaining_vals = (features[:, 0, REMAINING_OFFSET] * 70).round().long().cpu()
 
         for p in range(3):
             k_vals = labels[:, p].float().sum(dim=-1).long()
             probs  = constrained_softmax_probs(logits[:, p], k_vals)
-            preds  = probs.argmax(dim=-1)
-            correct_mask  = (preds == labels[:, p])
-            abs_diff      = (count_vals - labels[:, p].unsqueeze(-1).float()).abs()
-            eae_per_sample = (abs_diff * probs).sum(-1).sum(-1).cpu()
+            preds  = dp_decode(logits[:, p], k_vals)                  # CPU
+            correct_mask   = (preds == labels[:, p].cpu())
+            abs_diff       = (count_vals.cpu() - labels[:, p].cpu().unsqueeze(-1).float()).abs()
+            eae_per_sample = (abs_diff * probs.cpu()).sum(-1).sum(-1)
 
             for i, rem in enumerate(remaining_vals):
                 rem = rem.item()
@@ -377,10 +450,10 @@ def eval_metrics_detailed(model, loader, device):
         logits, _, _ = model(features)
 
         for p in range(3):
-            k     = labels[:, p].float().sum(dim=-1).long()
-            probs = constrained_softmax_probs(logits[:, p], k)
-            preds = probs.argmax(dim=-1)
-            all_preds.append(preds.cpu())
+            k      = labels[:, p].float().sum(dim=-1).long()
+            probs  = constrained_softmax_probs(logits[:, p], k)
+            preds  = dp_decode(logits[:, p], k)                       # CPU, sum==k保証
+            all_preds.append(preds)
             all_labels.append(labels[:, p].cpu())
 
             stage_w    = get_stage_weights(features[:, p])
@@ -414,7 +487,7 @@ def eval_metrics_detailed(model, loader, device):
         "f1_nonzero":        round(f1,        4),
         "mae_nonzero":       round(mae_nz,    4),
         "hand_exact_acc":    round(exact_acc, 4),
-        "pred_total_mae":    round(pred_total_mae, 4),
+        "pred_total_mae":    round(pred_total_mae, 4),  # DP デコードにより常に 0
     }
 
 
@@ -450,10 +523,9 @@ def main():
         print(f"次元数不一致: expected (3, {CONFIG['input_dim']}), got {feat_np.shape[1:]}")
         sys.exit(1)
 
-    # ノイズ除外: 全プレイヤーが手牌0枚かつ副露なしのサンプルを除去
     before   = len(feat_np)
-    lab_sum  = lab_np.sum(axis=-1)                                           # (N, 3)
-    meld_sum = (feat_np[:, :, 78] + feat_np[:, :, 79] + feat_np[:, :, 80])  # (N, 3) n_chi/pon/kan
+    lab_sum  = lab_np.sum(axis=-1)
+    meld_sum = (feat_np[:, :, 78] + feat_np[:, :, 79] + feat_np[:, :, 80])
     keep     = (lab_sum.sum(axis=1) > 0) | (meld_sum.sum(axis=1) > 0)
     feat_np  = feat_np[keep]; lab_np = lab_np[keep]; lred_np = lred_np[keep]
     print(f"ノイズ除外: {before - len(feat_np)} samples → {len(feat_np)}")
@@ -480,15 +552,16 @@ def main():
     val_loader   = DataLoader(val_dataset,   batch_size=CONFIG["batch_size"], shuffle=False, num_workers=2, pin_memory=use_gpu, persistent_workers=True)
     test_loader  = DataLoader(test_dataset,  batch_size=CONFIG["batch_size"], shuffle=False, num_workers=2, pin_memory=use_gpu, persistent_workers=True)
 
-    model = HandInferenceV15(
-        input_dim  = CONFIG["input_dim"],
-        d_model    = CONFIG["d_model"],
-        nhead      = CONFIG["nhead"],
-        num_layers = CONFIG["num_layers"],
-        n_pai      = CONFIG["n_pai"],
-        n_count_cls= CONFIG["n_count_cls"],
-        n_players  = CONFIG["n_players"],
-        dropout    = CONFIG["dropout"],
+    model = HandInferenceV16(
+        input_dim      = CONFIG["input_dim"],
+        d_model        = CONFIG["d_model"],
+        nhead          = CONFIG["nhead"],
+        num_layers     = CONFIG["num_layers"],
+        tile_attn_nhead= CONFIG["tile_attn_nhead"],
+        n_pai          = CONFIG["n_pai"],
+        n_count_cls    = CONFIG["n_count_cls"],
+        n_players      = CONFIG["n_players"],
+        dropout        = CONFIG["dropout"],
     ).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=CONFIG["lr"], weight_decay=CONFIG["weight_decay"])
@@ -501,10 +574,9 @@ def main():
 
     if resume and (MODEL_DIR / "model.pt").exists() and (MODEL_DIR / "train_log.json").exists():
         model.load_state_dict(torch.load(MODEL_DIR / "model.pt", map_location=device))
-        logs = [(json.loads(l)) for l in (MODEL_DIR / "train_log.json").read_text().splitlines() if l.strip()]
+        logs = [json.loads(l) for l in (MODEL_DIR / "train_log.json").read_text().splitlines() if l.strip()]
         best_val_eae = min(e["val_eae"] for e in logs)
         last_epoch   = max(e["epoch"]   for e in logs)
-        # patience = epochs since last improvement
         patience_cnt = 0
         for e in reversed(logs):
             if e["val_eae"] <= best_val_eae:
