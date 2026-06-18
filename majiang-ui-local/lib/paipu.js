@@ -995,7 +995,7 @@ module.exports = class Paipu {
                     }
                     // v29: ターツ直接推定による待ち候補
                     if (block_ev.likely_waits && block_ev.likely_waits.length > 0) {
-                        const TATSU_THRESH = 0.35;
+                        const TATSU_THRESH = 0.05;  // ビームサーチ確率は正規化済みのため低め
                         const top = block_ev.likely_waits
                             .filter(w => w.prob >= TATSU_THRESH)
                             .slice(0, 5);

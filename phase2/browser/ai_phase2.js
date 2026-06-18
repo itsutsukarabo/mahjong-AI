@@ -585,46 +585,220 @@
 
     /* ---- v29: block_logits 134-dim → 表示データ ---- */
 
-    function compute_likely_waits_from_tatsu(ryanmen_probs, kanchan_probs) {
-        // ryanmen_probs: Array(24) の sigmoid 確率値 (block_logits の生値ではなく 0-1 の確率)
-        // kanchan_probs: Array(21)
-        // 返す: [{tatsu, wait_tiles, prob}] を prob 降順でソート
-        const SUITS = ['m', 'p', 's'];
-        const waits = [];
+    // ============================================================
+    // ビームサーチデコーダー (decode_hand.py の JS 移植)
+    // block_logits から4面子1雀頭構造制約で有効な聴牌分解を探索する
+    // ============================================================
 
-        // 両面/辺張 (8種 × 3スーツ = 24種)
-        // n=0:12両 n=1:23面 ... n=6:78面 n=7:89辺
-        for (let s = 0; s < 3; s++) {
-            for (let n = 0; n < 8; n++) {
-                const p    = ryanmen_probs[s * 8 + n];
-                const suit = SUITS[s];
-                const lo   = n + 1, hi = n + 2;  // タツを構成する牌番号
+    const _TOITSU_START  = 55;
+    const _RYANMEN_START = 89;
+    const _KANCHAN_START = 113;
 
-                let wait_tiles;
-                if (lo === 1) {
-                    wait_tiles = [suit + 3];                          // 辺張 12 → 3
-                } else if (hi === 9) {
-                    wait_tiles = [suit + 7];                          // 辺張 89 → 7
-                } else {
-                    wait_tiles = [suit + (lo - 1), suit + (hi + 1)]; // 両面
+    function _block_to_tiles(b) {
+        if (b < 21) {
+            const s = Math.floor(b / 7), n = b % 7, base = s * 9;
+            return [base+n, base+n+1, base+n+2];
+        } else if (b < 55) {
+            const i = b - 21; return [i, i, i];
+        } else if (b < 89) {
+            const i = b - 55; return [i, i];
+        } else if (b < 113) {
+            const idx = b - 89, s = Math.floor(idx / 8), n = idx % 8, base = s * 9;
+            return [base+n, base+n+1];
+        } else {
+            const idx = b - 113, s = Math.floor(idx / 7), n = idx % 7, base = s * 9;
+            return [base+n, base+n+2];
+        }
+    }
+
+    function _block_to_waits(b) {
+        if (b < _TOITSU_START)  return [];
+        if (b < _RYANMEN_START) return [b - _TOITSU_START];
+        if (b < _KANCHAN_START) {
+            const idx = b - _RYANMEN_START, s = Math.floor(idx / 8), n = idx % 8, base = s * 9;
+            if (n === 0) return [base + 2];
+            if (n === 7) return [base + 6];
+            return [base+n-1, base+n+2];
+        }
+        const idx = b - _KANCHAN_START, s = Math.floor(idx / 7), n = idx % 7;
+        return [s*9 + n + 1];
+    }
+
+    function _tile_to_name(t) {
+        if (t <  9) return 'm' + (t + 1);
+        if (t < 18) return 'p' + (t - 8);
+        if (t < 27) return 's' + (t - 17);
+        return 'z' + (t - 26);
+    }
+
+    function _block_to_name(b) {
+        const seen = [];
+        for (const t of _block_to_tiles(b)) {
+            const s = _tile_to_name(t);
+            if (!seen.includes(s)) seen.push(s);
+        }
+        return seen.join('');
+    }
+
+    function _can_sub(remaining, tiles) {
+        const tmp = remaining.slice();
+        for (const t of tiles) { if (--tmp[t] < 0) return false; }
+        return true;
+    }
+
+    function _sub(remaining, tiles) {
+        const r = remaining.slice();
+        for (const t of tiles) r[t]--;
+        return r;
+    }
+
+    function _expand(state, logProbs, candidates) {
+        const nexts = [];
+        let R = 0; for (const v of state.remaining) R += v;
+
+        if (state.head < 0) {
+            if (R === 1) {
+                for (let t = 0; t < 34; t++) {
+                    if (state.remaining[t] !== 1) continue;
+                    const ns = { remaining: state.remaining.slice(), mentsu: state.mentsu.slice(),
+                                 head: -1, tatsu: -1, shanpon: false, tanki_tile: t,
+                                 log_score: state.log_score + logProbs[_TOITSU_START + t] };
+                    ns.remaining[t] = 0;
+                    nexts.push(ns);
                 }
-                waits.push({ tatsu: suit + lo + hi, wait_tiles, prob: p });
+                return nexts;
             }
+            if (R >= 4) {
+                for (const b of candidates) {
+                    if (b >= _TOITSU_START) continue;
+                    const tiles = _block_to_tiles(b);
+                    if (!_can_sub(state.remaining, tiles)) continue;
+                    nexts.push({ remaining: _sub(state.remaining, tiles),
+                                 mentsu: [...state.mentsu, b],
+                                 head: -1, tatsu: -1, shanpon: false, tanki_tile: -1,
+                                 log_score: state.log_score + logProbs[b] });
+                }
+            }
+            if (R === 4) {
+                for (const b of candidates) {
+                    if (b < _TOITSU_START || b >= _RYANMEN_START) continue;
+                    const tiles = _block_to_tiles(b);
+                    if (!_can_sub(state.remaining, tiles)) continue;
+                    nexts.push({ remaining: _sub(state.remaining, tiles),
+                                 mentsu: state.mentsu.slice(),
+                                 head: b, tatsu: -1, shanpon: false, tanki_tile: -1,
+                                 log_score: state.log_score + logProbs[b] });
+                }
+            }
+            return nexts;
         }
 
-        // 嵌張 (7種 × 3スーツ = 21種)
-        for (let s = 0; s < 3; s++) {
-            for (let n = 0; n < 7; n++) {
-                const p    = kanchan_probs[s * 7 + n];
-                const suit = SUITS[s];
-                const lo   = n + 1, hi = n + 3;
-                const mid  = n + 2;  // 嵌張の待ち牌
-                waits.push({ tatsu: suit + lo + '_' + hi, wait_tiles: [suit + mid], prob: p });
+        if (state.tatsu < 0 && R === 2) {
+            for (let t = 0; t < 34; t++) {
+                if (state.remaining[t] === 2) {
+                    const ns = { remaining: state.remaining.slice(), mentsu: state.mentsu.slice(),
+                                 head: state.head, tatsu: _TOITSU_START + t,
+                                 shanpon: true, tanki_tile: -1,
+                                 log_score: state.log_score + logProbs[_TOITSU_START + t] };
+                    ns.remaining[t] = 0;
+                    return [ns];
+                }
+            }
+            for (const b of candidates) {
+                if (b < _RYANMEN_START) continue;
+                const tiles = _block_to_tiles(b);
+                if (!_can_sub(state.remaining, tiles)) continue;
+                nexts.push({ remaining: _sub(state.remaining, tiles),
+                             mentsu: state.mentsu.slice(),
+                             head: state.head, tatsu: b, shanpon: false, tanki_tile: -1,
+                             log_score: state.log_score + logProbs[b] });
             }
         }
+        return nexts;
+    }
 
-        waits.sort((a, b) => b.prob - a.prob);
-        return waits;
+    function _is_complete(state) {
+        let R = 0; for (const v of state.remaining) R += v;
+        if (R !== 0) return false;
+        if (state.tanki_tile >= 0) return true;
+        return state.head >= 0 && state.tatsu >= 0;
+    }
+
+    function _get_wait_tiles(state) {
+        if (state.tanki_tile >= 0) return [state.tanki_tile];
+        if (state.tatsu < 0) return [];
+        if (state.shanpon) return [state.head - _TOITSU_START, state.tatsu - _TOITSU_START];
+        return _block_to_waits(state.tatsu);
+    }
+
+    function _get_tatsu_label(state) {
+        if (state.tanki_tile >= 0) return _tile_to_name(state.tanki_tile) + '単騎';
+        if (state.tatsu < 0) return '?';
+        if (state.shanpon) {
+            return (_tile_to_name(state.head - _TOITSU_START) +
+                    _tile_to_name(state.tatsu - _TOITSU_START) + '双碰');
+        }
+        return _block_to_name(state.tatsu);
+    }
+
+    function beam_search_decoder_js(block_logits_134, initial_counts, beam_width = 20, prob_threshold = 0.03) {
+        let total = 0; for (const v of initial_counts) total += v;
+        if (total % 3 !== 1) return [];
+
+        const sigmoid = x => 1 / (1 + Math.exp(-x));
+        const logProbs = Array.from(block_logits_134).map(x => Math.log(sigmoid(x) + 1e-9));
+        const probs    = Array.from(block_logits_134).map(sigmoid);
+        const candidates = probs.reduce((acc, p, i) => { if (p > prob_threshold) acc.push(i); return acc; }, []);
+
+        const initial = { remaining: Array.from(initial_counts), mentsu: [],
+                          head: -1, tatsu: -1, shanpon: false, tanki_tile: -1, log_score: 0.0 };
+        let beam = [initial];
+        const completed = [];
+
+        for (let step = 0; step < 8; step++) {
+            if (!beam.length) break;
+            const next_beam = [];
+            for (const state of beam) {
+                for (const ns of _expand(state, logProbs, candidates)) {
+                    (_is_complete(ns) ? completed : next_beam).push(ns);
+                }
+            }
+            next_beam.sort((a, b) => b.log_score - a.log_score);
+            beam = next_beam.slice(0, beam_width);
+        }
+
+        completed.sort((a, b) => b.log_score - a.log_score);
+        return completed.slice(0, beam_width);
+    }
+
+    function compute_likely_waits_from_beam(beam_results) {
+        if (!beam_results.length) return [];
+
+        const scores     = beam_results.map(s => s.log_score);
+        const max_score  = Math.max(...scores);
+        const weights    = scores.map(s => Math.exp(s - max_score));
+        const total_w    = weights.reduce((a, b) => a + b, 0);
+        const norm_w     = weights.map(w => w / total_w);
+
+        // 同じ待ち牌集合でグループ化して確率を合算
+        const group_map = new Map();
+        beam_results.forEach((state, i) => {
+            const wait_idxs = _get_wait_tiles(state).slice().sort((a, b) => a - b);
+            if (!wait_idxs.length) return;
+            const key = wait_idxs.join(',');
+            if (!group_map.has(key)) {
+                group_map.set(key, {
+                    tatsu:      _get_tatsu_label(state),
+                    wait_tiles: wait_idxs.map(_tile_to_name),
+                    prob:       0,
+                });
+            }
+            group_map.get(key).prob += norm_w[i];
+        });
+
+        const result = Array.from(group_map.values());
+        result.sort((a, b) => b.prob - a.prob);
+        return result;
     }
 
     function make_block_display_data_v29(block_logits_134, probs_per_tile, melds, tenpai_prob) {
@@ -645,10 +819,10 @@
         const ryanmen_dist  = prob.slice(89,  113).map(to_dist);  // 24種
         const kanchan_dist  = prob.slice(113, 134).map(to_dist);  // 21種
 
-        // ターツ直接推定: v29のblock_logitsから待ち候補を算出
-        const likely_waits = compute_likely_waits_from_tatsu(
-            prob.slice(89, 113), prob.slice(113, 134)
-        );
+        // ビームサーチデコーダーで聴牌分解を探索し待ち牌確率を算出
+        const initial_counts = probs_per_tile.map(p => p.indexOf(Math.max(...p)));
+        const beam_results   = beam_search_decoder_js(block_logits_134, initial_counts);
+        const likely_waits   = compute_likely_waits_from_beam(beam_results);
 
         const hand_str = get_best_hand_str(probs_per_tile, melds);
         let shanten = null, tingpai = null, decomps = null;
