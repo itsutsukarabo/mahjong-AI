@@ -1020,11 +1020,15 @@ module.exports = class Paipu {
                     ? 'ブロック期待値（聴牌形）' : 'ブロック期待値';
                 wrap.append($('<div class="ai-hi-block-label">').text(label));
 
+                // base: triplet/pair インデックスの開始位置（34牌順）
+                // seq_base: seq_dist インデックスの開始位置（スーツ × 7）
+                // ryanmen_base: ryanmen_dist インデックスの開始位置（スーツ × 8）
+                // kanchan_base: kanchan_dist インデックスの開始位置（スーツ × 7）
                 const SUITS_BLOCK = [
-                    { key:'m', label:'M', base:0,  size:9, seq_base:0,  has_seq:true  },
-                    { key:'p', label:'P', base:9,  size:9, seq_base:7,  has_seq:true  },
-                    { key:'s', label:'S', base:18, size:9, seq_base:14, has_seq:true  },
-                    { key:'z', label:'Z', base:27, size:7, seq_base:-1, has_seq:false },
+                    { key:'m', label:'M', base:0,  size:9, seq_base:0,  has_seq:true,  ryanmen_base:0,  kanchan_base:0  },
+                    { key:'p', label:'P', base:9,  size:9, seq_base:7,  has_seq:true,  ryanmen_base:8,  kanchan_base:7  },
+                    { key:'s', label:'S', base:18, size:9, seq_base:14, has_seq:true,  ryanmen_base:16, kanchan_base:14 },
+                    { key:'z', label:'Z', base:27, size:7, seq_base:-1, has_seq:false, ryanmen_base:-1, kanchan_base:-1 },
                 ];
 
                 for (const suit of SUITS_BLOCK) {
@@ -1061,6 +1065,32 @@ module.exports = class Paipu {
                         tr_pair.append($('<td>').append(make_block_cell(block_ev.pair_dist[suit.base + n])));
                     }
                     tbody.append(tr_pair);
+
+                    // 両面/辺張（v29）
+                    if (suit.has_seq && block_ev.ryanmen_dist) {
+                        const tr_ryanmen = $('<tr>').addClass('ai-suit-' + suit.key);
+                        tr_ryanmen.append($('<th>').text('両'));
+                        for (let n = 0; n < 8; n++) {
+                            const label = suit.key + (n+1) + (n+2);
+                            tr_ryanmen.append($('<td>').attr('title', label)
+                                .append(make_block_cell(block_ev.ryanmen_dist[suit.ryanmen_base + n])));
+                        }
+                        tr_ryanmen.append($('<td class="ai-hi-block-empty">'));
+                        tbody.append(tr_ryanmen);
+                    }
+
+                    // 嵌張（v29）
+                    if (suit.has_seq && block_ev.kanchan_dist) {
+                        const tr_kanchan = $('<tr>').addClass('ai-suit-' + suit.key);
+                        tr_kanchan.append($('<th>').text('嵌'));
+                        for (let n = 0; n < 7; n++) {
+                            const label = suit.key + (n+1) + '_' + (n+3);
+                            tr_kanchan.append($('<td>').attr('title', label)
+                                .append(make_block_cell(block_ev.kanchan_dist[suit.kanchan_base + n])));
+                        }
+                        tr_kanchan.append($('<td colspan="2" class="ai-hi-block-empty">'));
+                        tbody.append(tr_kanchan);
+                    }
 
                     table.append(tbody);
                     wrap.append(table);
