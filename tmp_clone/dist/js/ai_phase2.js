@@ -765,6 +765,11 @@
                             tenpai_prob_list[i] = 1 / (1 + Math.exp(-t_out['logit'].data[0]));
                         } catch(e) { console.warn('AI Phase2: tenpai_inference error', e); }
                     }
+
+                    // 立直者はテンパイ確定: モデル未ロード/失敗時でも 1.0 を保証
+                    if (state.riichi_l[target_l] && tenpai_prob_list[i] === null) {
+                        tenpai_prob_list[i] = 1.0;
+                    }
                 }
 
                 // Stage 2: 手牌推定 — (1, 3, 442) バッチ推論
