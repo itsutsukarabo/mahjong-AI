@@ -1,6 +1,6 @@
 {
   "input_dim": 108,
-  "n_yaku": 15,
+  "n_yaku": 21,
   "hidden": [
     256,
     128
@@ -8,7 +8,7 @@
   "dropout": 0.2,
   "lr": 0.001,
   "weight_decay": 0.0001,
-  "batch_size": 512,
+  "batch_size": 1024,
   "epochs": 40,
   "early_stop_patience": 7
 }

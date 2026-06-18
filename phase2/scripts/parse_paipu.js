@@ -76,6 +76,33 @@ function is_pon_of(meld_str, tile_norm) {
     return `${suit}${n === 0 ? 5 : n}` === tile_norm;
 }
 
+function can_chi(shoupai, tile_norm) {
+    const suit = tile_norm[0];
+    if (!'mps'.includes(suit)) return false;
+    const n = parseInt(tile_norm[1]);
+    if (n < 1 || n > 9) return false;
+    const hasA = n >= 3
+        && count_tile_in_shoupai(shoupai, `${suit}${n-2}`) >= 1
+        && count_tile_in_shoupai(shoupai, `${suit}${n-1}`) >= 1;
+    const hasB = n >= 2 && n <= 8
+        && count_tile_in_shoupai(shoupai, `${suit}${n-1}`) >= 1
+        && count_tile_in_shoupai(shoupai, `${suit}${n+1}`) >= 1;
+    const hasC = n <= 7
+        && count_tile_in_shoupai(shoupai, `${suit}${n+1}`) >= 1
+        && count_tile_in_shoupai(shoupai, `${suit}${n+2}`) >= 1;
+    return hasA || hasB || hasC;
+}
+
+function is_chi_of(meld_str, tile_norm) {
+    if (!meld_str) return false;
+    const match = meld_str.match(/^([mps])(\d*)([\+\=\-])(\d*)$/);
+    if (!match) return false;
+    if (tile_norm[0] !== match[1]) return false;
+    const digits = (match[2] + match[4]).split('').map(c => parseInt(c) === 0 ? 5 : parseInt(c));
+    const tile_n = parseInt(tile_norm[1]) === 0 ? 5 : parseInt(tile_norm[1]);
+    return digits.includes(tile_n);
+}
+
 // ---- 局の役情報・和了スートを収集（バックフィル用） ----
 
 function detect_primary_suit(shoupai_str) {
@@ -157,6 +184,7 @@ function parse_round(paipu_id, paipu, round_idx, board) {
     const discards_l   = [[], [], [], []];
     const riichi_l     = [false, false, false, false];
     const pon_passes_l = [[], [], [], []];
+    const chi_passes_l = [[], [], [], []];
     let   total_discards = 0;
 
     // 局末の得失点・役情報（先に収集してすべてのレコードに付与）
@@ -191,6 +219,21 @@ function parse_round(paipu_id, paipu, round_idx, board) {
                     if (l !== ponner_l) {
                         pon_passes_l[l].push({ p: tile_norm, t: total_discards });
                     }
+                }
+            }
+
+            // チースルー検出: 上家 (val.l+1)%4 のみがチー可能
+            const chi_caller_l = (val.l + 1) % 4;
+            if (
+                !riichi_l[chi_caller_l] &&
+                board.shoupai[chi_caller_l] &&
+                can_chi(board.shoupai[chi_caller_l], tile_norm)
+            ) {
+                const is_chi = next_ev?.fulou
+                    && is_chi_of(next_ev.fulou.m, tile_norm)
+                    && next_ev.fulou.l === chi_caller_l;
+                if (!is_chi) {
+                    chi_passes_l[chi_caller_l].push({ p: tile_norm, t: total_discards });
                 }
             }
             total_discards++;
@@ -257,6 +300,7 @@ function parse_round(paipu_id, paipu, round_idx, board) {
                 final_points,
                 final_ranks,
                 pon_passes_l: pon_passes_l.map(a => [...a]),
+                chi_passes_l: chi_passes_l.map(a => [...a]),
                 yaku_l,
                 win_suit_l,
                 win_sanshoku_l,

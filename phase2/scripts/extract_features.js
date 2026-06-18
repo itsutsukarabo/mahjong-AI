@@ -314,6 +314,39 @@ function pass_pon_signal(pon_passes, max_discards = 70) {
     return signal;
 }
 
+/**
+ * チースルー信号: 上家の捨て牌にチーできたのにしなかった牌を集計（34次元）
+ * t / max_discards で直近のスルーほど大きい値
+ */
+function pass_chi_signal(chi_passes, max_discards = 70) {
+    const signal = new Array(N_PAI).fill(0);
+    for (const { p, t } of (chi_passes || [])) {
+        const pi = pai_to_idx(p);
+        if (pi >= 0) signal[pi] += t / max_discards;
+    }
+    return signal;
+}
+
+/**
+ * チー受け取り牌信号: ターゲットのチー面子で上家から受け取った牌を返す（34次元バイナリ）
+ *
+ * direction marker (+/=/-) の直前の数字が鳴いた牌（shoupai.js:284-326 より確認済み）
+ *   m3-45 → m3, m23-4 → m3, m234- → m4
+ */
+function chi_called_tile_signal(melds) {
+    const signal = new Array(N_PAI).fill(0);
+    for (const m of (melds || [])) {
+        const match = m.match(/^([mps])(\d*)([\+\=\-])(\d*)$/);
+        if (!match || match[2].length === 0) continue;
+        const suit = match[1];
+        const raw_digit = parseInt(match[2][match[2].length - 1]);
+        const called_n = raw_digit === 0 ? 5 : raw_digit;
+        const pi = pai_to_idx(`${suit}${called_n}`);
+        if (pi >= 0) signal[pi] = 1;
+    }
+    return signal;
+}
+
 // ---- 役推定用エンコーディング ----
 
 // 21クラス:
@@ -453,12 +486,13 @@ function others_meld_type_features(rec) {
 // ---- 3モデル用の特徴量・ラベル生成 ----
 
 /**
- * 手牌類推モデル用 (v10: flat 352次元 ※学習時は add_yaku_features.py で373次元、add_tenpai_features.py で374次元になる)
+ * 手牌類推モデル用 (v22: flat 420次元 ※学習時は add_yaku/tenpai で442次元になる)
  * 視点プレイヤー l から見た 対象プレイヤー target_l の特徴量 + ラベル
  *
  * target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
  * self_discard(44) + self_meld(38) + visible_counts(34) + red_discard_signal(3) +
  * red_visible(3) + other1_discard(44) + other2_discard(44) + pass_pon_signal(34) + wind(5) = 352次元
+ * + pass_chi_signal(34) + chi_called_tile_signal(34) = 420次元
  */
 function make_hand_inference_sample(rec, target_l) {
     // viewer でも target でもない2プレイヤーを相対順で取得
@@ -479,9 +513,11 @@ function make_hand_inference_sample(rec, target_l) {
         ...red_visible_flags(rec.discards_l, rec.melds_l),                       // 3
         ...discard_features(rec.discards_l[other_ls[0]]),  // 44
         ...discard_features(rec.discards_l[other_ls[1]]),  // 44
-        ...pass_pon_signal(rec.pon_passes_l?.[target_l]),   // 34
-        ...wind_features(rec, target_l),                    // 5
-    ];  // 352次元
+        ...pass_pon_signal(rec.pon_passes_l?.[target_l]),          // 34
+        ...wind_features(rec, target_l),                           // 5
+        ...pass_chi_signal(rec.chi_passes_l?.[target_l]),          // 34  ← NEW
+        ...chi_called_tile_signal(rec.melds_l?.[target_l]),        // 34  ← NEW
+    ];  // 420次元 (+ add_yaku 21 + add_tenpai 1 = 442次元)
 
     const { counts: hand_vec_target, red: red_target } = encode_hand_red(rec.hands_l[target_l]);
 

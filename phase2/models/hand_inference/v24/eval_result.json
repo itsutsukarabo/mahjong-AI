@@ -1,0 +1,48 @@
+{
+  "test_eae": 6.309842783152223,
+  "test_acc": 0.8578052483936552,
+  "by_remaining_bucket": {
+    "early": {
+      "acc": 0.7628816125611148,
+      "eae": 13.084734241839628,
+      "n": 26457
+    },
+    "mid": {
+      "acc": 0.9094336670838549,
+      "eae": 5.767659042494903,
+      "n": 22560
+    },
+    "late": {
+      "acc": 0.9630566138741293,
+      "eae": 2.578106811918624,
+      "n": 10329
+    },
+    "endgame": {
+      "acc": 0.9674445189989811,
+      "eae": 2.1754247110295117,
+      "n": 2367
+    }
+  },
+  "weighted_eae": 6.3098,
+  "recall_nonzero": 0.6117,
+  "precision_nonzero": 0.8639,
+  "f1_nonzero": 0.7162,
+  "mae_nonzero": 0.5108,
+  "hand_exact_acc": 0.2104,
+  "pred_total_mae": 3.6517,
+  "config": {
+    "input_dim": 442,
+    "d_model": 256,
+    "nhead": 4,
+    "num_layers": 3,
+    "n_pai": 34,
+    "n_count_cls": 5,
+    "n_players": 3,
+    "dropout": 0.1,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch_size": 256,
+    "epochs": 200,
+    "early_stop_patience": 7
+  }
+}

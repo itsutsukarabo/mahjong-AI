@@ -1,13 +1,14 @@
 """
-hand_inference.ndjson (374-dim、3サンプル/ゲーム状態) を
-hand_inference_v15.ndjson (374-dim × 3プレイヤー、1サンプル/ゲーム状態) に変換する。
+hand_inference.ndjson (N-dim、3サンプル/ゲーム状態) を
+hand_inference_v15.ndjson (N-dim × 3プレイヤー、1サンプル/ゲーム状態) に変換する。
 
-入力: phase2/data/features/hand_inference.ndjson
-出力: phase2/data/features/hand_inference_v15.ndjson
+使い方:
+  python prepare_v15_data.py                              # デフォルトパス
+  python prepare_v15_data.py --src foo.ndjson --dst bar.ndjson  # 任意パス指定
 
 形式変換:
-  入力: { "features": [374], "label_hand": [34], "label_red": [3], "meta": {...} } × 3行
-  出力: { "features": [[374],[374],[374]], "label_hand": [[34],[34],[34]], "label_red": [[3],[3],[3]] } × 1行
+  入力: { "features": [N], "label_hand": [34], "label_red": [3], "meta": {...} } × 3行
+  出力: { "features": [[N],[N],[N]], "label_hand": [[34],[34],[34]], "label_red": [[3],[3],[3]] } × 1行
 
 連続する3行が同じゲーム状態に対応するため、ストリーミング処理でメモリ効率良く変換する。
 """
@@ -15,9 +16,17 @@ import json
 import sys
 from pathlib import Path
 
+_args = sys.argv[1:]
+_opts = {}
+for i, a in enumerate(_args):
+    if a.startswith("--"):
+        key = a[2:]
+        val = _args[i + 1] if i + 1 < len(_args) and not _args[i + 1].startswith("--") else True
+        _opts[key] = val
+
 FEATURES_DIR = Path(__file__).parent.parent / "data" / "features"
-INPUT_PATH  = FEATURES_DIR / "hand_inference.ndjson"
-OUTPUT_PATH = FEATURES_DIR / "hand_inference_v15.ndjson"
+INPUT_PATH  = Path(_opts["src"]) if "src" in _opts else FEATURES_DIR / "hand_inference.ndjson"
+OUTPUT_PATH = Path(_opts["dst"]) if "dst" in _opts else FEATURES_DIR / "hand_inference_v15.ndjson"
 
 
 def main():

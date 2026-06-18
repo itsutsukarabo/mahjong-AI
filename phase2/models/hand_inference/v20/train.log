@@ -1,0 +1,1152 @@
+device: cuda  resume: False
+読み込み中: /mnt/c/Users/tetsu-4no/mahjong-AI/phase2/data/features/hand_inference_v19.ndjson
+総サンプル数: 206034
+  50000/206034
+  100000/206034
+  150000/206034
+  200000/206034
+/home/tetsu-4no/miniconda3/envs/mahjong/lib/python3.11/site-packages/torch/nn/modules/transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+features: (206034, 3, 374), label_block: (206034, 3, 89)
+pos_rate=0.0296  pos_weight=32.73
+ノイズ除外: 0 → 206034
+train: 164827, val: 20603, test: 20604
+epoch   1  train_nll=0.6521  val_eae=14.7046  val_acc=0.7326
+  [thermal] GPU 85C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch   2  train_nll=0.5964  val_eae=14.0543  val_acc=0.7374
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch   3  train_nll=0.5783  val_eae=13.6898  val_acc=0.7403
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch   4  train_nll=0.5665  val_eae=13.4473  val_acc=0.7433
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch   5  train_nll=0.5548  val_eae=13.1166  val_acc=0.7476
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 75C
+  [thermal] GPU 73C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch   6  train_nll=0.5432  val_eae=12.8469  val_acc=0.7501
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 75C
+  [thermal] GPU 72C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch   7  train_nll=0.5338  val_eae=12.6240  val_acc=0.7528
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch   8  train_nll=0.5226  val_eae=12.4771  val_acc=0.7551
+  [thermal] GPU 85C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch   9  train_nll=0.5140  val_eae=12.1610  val_acc=0.7581
+  [thermal] GPU 85C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  10  train_nll=0.5042  val_eae=11.9300  val_acc=0.7609
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 75C
+  [thermal] GPU 73C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  11  train_nll=0.4936  val_eae=11.7543  val_acc=0.7643
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 75C
+  [thermal] GPU 73C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  12  train_nll=0.4863  val_eae=11.5147  val_acc=0.7679
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  13  train_nll=0.4794  val_eae=11.2770  val_acc=0.7692
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 73C
+  [thermal] GPU 72C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 69C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 68C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 67C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 66C
+  [thermal] GPU 66C
+  [thermal] GPU 66C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  14  train_nll=0.4739  val_eae=11.1500  val_acc=0.7728
+  [thermal] GPU 85C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 73C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  15  train_nll=0.4651  val_eae=11.0140  val_acc=0.7739
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  16  train_nll=0.4597  val_eae=10.9108  val_acc=0.7772
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  17  train_nll=0.4556  val_eae=10.7323  val_acc=0.7785
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  18  train_nll=0.4492  val_eae=10.5303  val_acc=0.7822
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  19  train_nll=0.4438  val_eae=10.4089  val_acc=0.7837
+  [thermal] GPU 85C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  20  train_nll=0.4396  val_eae=10.3173  val_acc=0.7848
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  21  train_nll=0.4357  val_eae=10.4174  val_acc=0.7860
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 75C
+  [thermal] GPU 73C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  22  train_nll=0.4335  val_eae=10.3316  val_acc=0.7873
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 75C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  23  train_nll=0.4285  val_eae=10.2322  val_acc=0.7880
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  24  train_nll=0.4233  val_eae=10.1794  val_acc=0.7894
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  25  train_nll=0.4226  val_eae=9.9310  val_acc=0.7911
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  26  train_nll=0.4197  val_eae=9.8832  val_acc=0.7921
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  27  train_nll=0.4165  val_eae=9.6129  val_acc=0.7956
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  28  train_nll=0.4122  val_eae=9.5005  val_acc=0.7970
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  29  train_nll=0.4101  val_eae=9.7093  val_acc=0.7964
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  30  train_nll=0.4081  val_eae=9.5626  val_acc=0.7975
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 75C
+  [thermal] GPU 73C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  31  train_nll=0.4064  val_eae=9.5020  val_acc=0.7974
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 75C
+  [thermal] GPU 73C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  32  train_nll=0.4016  val_eae=9.4308  val_acc=0.8012
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  33  train_nll=0.4027  val_eae=9.2990  val_acc=0.8016
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  34  train_nll=0.3988  val_eae=9.1811  val_acc=0.8032
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  35  train_nll=0.3966  val_eae=9.2211  val_acc=0.8006
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  36  train_nll=0.3952  val_eae=9.3775  val_acc=0.8021
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  37  train_nll=0.3938  val_eae=9.3231  val_acc=0.8022
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  38  train_nll=0.3918  val_eae=8.9766  val_acc=0.8057
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  39  train_nll=0.3904  val_eae=9.1757  val_acc=0.8030
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  40  train_nll=0.3875  val_eae=9.1142  val_acc=0.8054
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  41  train_nll=0.3870  val_eae=9.0231  val_acc=0.8066
+  [thermal] GPU 85C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  42  train_nll=0.3856  val_eae=9.0291  val_acc=0.8063
+  [thermal] GPU 85C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  43  train_nll=0.3674  val_eae=8.4556  val_acc=0.8138
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  44  train_nll=0.3599  val_eae=8.3481  val_acc=0.8149
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  45  train_nll=0.3569  val_eae=8.3430  val_acc=0.8158
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  46  train_nll=0.3549  val_eae=8.2784  val_acc=0.8165
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  47  train_nll=0.3531  val_eae=8.2105  val_acc=0.8168
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  48  train_nll=0.3518  val_eae=8.1444  val_acc=0.8173
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  49  train_nll=0.3509  val_eae=8.1659  val_acc=0.8178
+  [thermal] GPU 85C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 73C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  50  train_nll=0.3499  val_eae=8.1675  val_acc=0.8180
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  51  train_nll=0.3489  val_eae=8.1106  val_acc=0.8187
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 75C
+  [thermal] GPU 73C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  52  train_nll=0.3482  val_eae=8.1202  val_acc=0.8186
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  53  train_nll=0.3475  val_eae=8.0883  val_acc=0.8189
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  54  train_nll=0.3468  val_eae=8.0787  val_acc=0.8192
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  55  train_nll=0.3460  val_eae=8.0684  val_acc=0.8195
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  56  train_nll=0.3455  val_eae=8.0300  val_acc=0.8199
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  57  train_nll=0.3449  val_eae=8.0099  val_acc=0.8200
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  58  train_nll=0.3445  val_eae=8.0103  val_acc=0.8200
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  59  train_nll=0.3438  val_eae=7.9885  val_acc=0.8203
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  60  train_nll=0.3432  val_eae=7.9828  val_acc=0.8204
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  61  train_nll=0.3428  val_eae=8.0301  val_acc=0.8204
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  62  train_nll=0.3424  val_eae=7.9874  val_acc=0.8209
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  63  train_nll=0.3421  val_eae=7.9232  val_acc=0.8210
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  64  train_nll=0.3415  val_eae=7.9331  val_acc=0.8212
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  65  train_nll=0.3411  val_eae=7.9357  val_acc=0.8214
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  66  train_nll=0.3407  val_eae=7.9189  val_acc=0.8215
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  67  train_nll=0.3403  val_eae=7.9128  val_acc=0.8216
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  68  train_nll=0.3399  val_eae=7.9116  val_acc=0.8216
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  69  train_nll=0.3395  val_eae=7.8809  val_acc=0.8219
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  70  train_nll=0.3390  val_eae=7.8685  val_acc=0.8221
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  71  train_nll=0.3387  val_eae=7.8681  val_acc=0.8221
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 75C
+  [thermal] GPU 73C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  72  train_nll=0.3383  val_eae=7.8802  val_acc=0.8222
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  73  train_nll=0.3379  val_eae=7.8425  val_acc=0.8225
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  74  train_nll=0.3375  val_eae=7.8373  val_acc=0.8226
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  75  train_nll=0.3374  val_eae=7.8562  val_acc=0.8227
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  76  train_nll=0.3370  val_eae=7.7849  val_acc=0.8230
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  77  train_nll=0.3368  val_eae=7.8014  val_acc=0.8231
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  78  train_nll=0.3366  val_eae=7.7818  val_acc=0.8232
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  79  train_nll=0.3363  val_eae=7.8153  val_acc=0.8232
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  80  train_nll=0.3359  val_eae=7.7970  val_acc=0.8232
+  [thermal] GPU 85C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  81  train_nll=0.3356  val_eae=7.8058  val_acc=0.8235
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  82  train_nll=0.3352  val_eae=7.8279  val_acc=0.8233
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  83  train_nll=0.3336  val_eae=7.7679  val_acc=0.8237
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  84  train_nll=0.3334  val_eae=7.7560  val_acc=0.8239
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  85  train_nll=0.3332  val_eae=7.7647  val_acc=0.8239
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  86  train_nll=0.3330  val_eae=7.7447  val_acc=0.8240
+  [thermal] GPU 85C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  87  train_nll=0.3328  val_eae=7.7461  val_acc=0.8240
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  88  train_nll=0.3327  val_eae=7.7526  val_acc=0.8241
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  89  train_nll=0.3327  val_eae=7.7451  val_acc=0.8241
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  90  train_nll=0.3325  val_eae=7.7501  val_acc=0.8242
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  91  train_nll=0.3324  val_eae=7.7380  val_acc=0.8241
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 75C
+  [thermal] GPU 73C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  92  train_nll=0.3323  val_eae=7.7535  val_acc=0.8241
+  [thermal] GPU 85C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  93  train_nll=0.3325  val_eae=7.7639  val_acc=0.8241
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  94  train_nll=0.3322  val_eae=7.7474  val_acc=0.8241
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  95  train_nll=0.3324  val_eae=7.7501  val_acc=0.8242
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 64C
+  [thermal] cool enough, resuming
+epoch  96  train_nll=0.3324  val_eae=7.7331  val_acc=0.8241
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  97  train_nll=0.3324  val_eae=7.7405  val_acc=0.8241
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  98  train_nll=0.3323  val_eae=7.7290  val_acc=0.8242
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch  99  train_nll=0.3323  val_eae=7.7432  val_acc=0.8242
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 78C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 71C
+  [thermal] GPU 69C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch 100  train_nll=0.3324  val_eae=7.7542  val_acc=0.8241
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch 101  train_nll=0.3323  val_eae=7.7403  val_acc=0.8242
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch 102  train_nll=0.3324  val_eae=7.7410  val_acc=0.8242
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 69C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch 103  train_nll=0.3323  val_eae=7.7344  val_acc=0.8241
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch 104  train_nll=0.3323  val_eae=7.7504  val_acc=0.8241
+  [thermal] GPU 87C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 72C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 67C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+epoch 105  train_nll=0.3323  val_eae=7.7392  val_acc=0.8242
+  [thermal] GPU 86C > 65C - cooling...
+  [thermal] GPU 77C
+  [thermal] GPU 74C
+  [thermal] GPU 71C
+  [thermal] GPU 70C
+  [thermal] GPU 68C
+  [thermal] GPU 66C
+  [thermal] GPU 65C
+  [thermal] cool enough, resuming
+/mnt/c/Users/tetsu-4no/mahjong-AI/phase2/train/train_hand_inference_v20.py:562: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  model.load_state_dict(torch.load(MODEL_DIR / "model.pt", map_location=device))
+early stopping
+test_eae=7.7081  test_acc=0.8249
+
+詳細評価指標:
+  weighted_eae: 7.7081
+  recall_nonzero: 0.6944
+  precision_nonzero: 0.6677
+  f1_nonzero: 0.6808
+  hand_exact_acc: 0.1547
+  pred_total_mae: 0.0
+  block_f1: 0.3051
+  block_precision: 0.1829
+  block_recall: 0.9192
+モデル保存: /mnt/c/Users/tetsu-4no/mahjong-AI/phase2/models/hand_inference/v20
