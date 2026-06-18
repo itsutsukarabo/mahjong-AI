@@ -585,6 +585,48 @@
 
     /* ---- v29: block_logits 134-dim → 表示データ ---- */
 
+    function compute_likely_waits_from_tatsu(ryanmen_probs, kanchan_probs) {
+        // ryanmen_probs: Array(24) の sigmoid 確率値 (block_logits の生値ではなく 0-1 の確率)
+        // kanchan_probs: Array(21)
+        // 返す: [{tatsu, wait_tiles, prob}] を prob 降順でソート
+        const SUITS = ['m', 'p', 's'];
+        const waits = [];
+
+        // 両面/辺張 (8種 × 3スーツ = 24種)
+        // n=0:12両 n=1:23面 ... n=6:78面 n=7:89辺
+        for (let s = 0; s < 3; s++) {
+            for (let n = 0; n < 8; n++) {
+                const p    = ryanmen_probs[s * 8 + n];
+                const suit = SUITS[s];
+                const lo   = n + 1, hi = n + 2;  // タツを構成する牌番号
+
+                let wait_tiles;
+                if (lo === 1) {
+                    wait_tiles = [suit + 3];                          // 辺張 12 → 3
+                } else if (hi === 9) {
+                    wait_tiles = [suit + 7];                          // 辺張 89 → 7
+                } else {
+                    wait_tiles = [suit + (lo - 1), suit + (hi + 1)]; // 両面
+                }
+                waits.push({ tatsu: suit + lo + hi, wait_tiles, prob: p });
+            }
+        }
+
+        // 嵌張 (7種 × 3スーツ = 21種)
+        for (let s = 0; s < 3; s++) {
+            for (let n = 0; n < 7; n++) {
+                const p    = kanchan_probs[s * 7 + n];
+                const suit = SUITS[s];
+                const lo   = n + 1, hi = n + 3;
+                const mid  = n + 2;  // 嵌張の待ち牌
+                waits.push({ tatsu: suit + lo + '_' + hi, wait_tiles: [suit + mid], prob: p });
+            }
+        }
+
+        waits.sort((a, b) => b.prob - a.prob);
+        return waits;
+    }
+
     function make_block_display_data_v29(block_logits_134, probs_per_tile, melds, tenpai_prob) {
         // block_logits_134: Float32Array または Array (134要素)
         // ブロックインデックス:
@@ -602,6 +644,11 @@
         const pair_dist     = prob.slice(55,  89).map(to_dist);   // 34種
         const ryanmen_dist  = prob.slice(89,  113).map(to_dist);  // 24種
         const kanchan_dist  = prob.slice(113, 134).map(to_dist);  // 21種
+
+        // ターツ直接推定: v29のblock_logitsから待ち候補を算出
+        const likely_waits = compute_likely_waits_from_tatsu(
+            prob.slice(89, 113), prob.slice(113, 134)
+        );
 
         const hand_str = get_best_hand_str(probs_per_tile, melds);
         let shanten = null, tingpai = null, decomps = null;
@@ -630,6 +677,7 @@
             triplet_dist, seq_dist, pair_dist, ryanmen_dist, kanchan_dist,
             hand_str, shanten, tingpai, decomps,
             tenpai_prob: tenpai_prob != null ? tenpai_prob : undefined,
+            likely_waits,
         };
     }
 

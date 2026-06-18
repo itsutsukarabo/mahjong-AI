@@ -978,7 +978,7 @@ module.exports = class Paipu {
             const make_best_hand_section = (block_ev) => {
                 const div = $('<div class="ai-hi-best-hand">');
 
-                // v11: tenpai_prob がある場合は「聴牌推定形」として表示
+                // v29: tenpai_prob + likely_waits がある場合は「聴牌推定形」として表示
                 if (block_ev.tenpai_prob !== undefined) {
                     const tp_pct = block_ev.tenpai_prob !== null
                         ? Math.round(block_ev.tenpai_prob * 100) + '%' : '-';
@@ -992,6 +992,20 @@ module.exports = class Paipu {
                         }
                     } else if (block_ev.hand_str) {
                         div.append($('<span class="ai-hi-hand-str">').text(block_ev.hand_str));
+                    }
+                    // v29: ターツ直接推定による待ち候補
+                    if (block_ev.likely_waits && block_ev.likely_waits.length > 0) {
+                        const TATSU_THRESH = 0.35;
+                        const top = block_ev.likely_waits
+                            .filter(w => w.prob >= TATSU_THRESH)
+                            .slice(0, 5);
+                        if (top.length > 0) {
+                            const parts = top.map(w => {
+                                const pct = Math.round(w.prob * 100) + '%';
+                                return w.tatsu + '→' + w.wait_tiles.join('/') + '(' + pct + ')';
+                            });
+                            div.append($('<div class="ai-hi-tatsu-waits">').text('ターツ推定: ' + parts.join('  ')));
+                        }
                     }
                     return div;
                 }
