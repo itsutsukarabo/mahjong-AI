@@ -294,6 +294,7 @@ function parse_round(paipu_id, paipu, round_idx, board) {
 
                 scores,
                 remaining:   board.shan.paishu,
+                baopai:      [...board.shan.baopai],
 
                 action,
                 round_fenpei,

@@ -1,11 +1,11 @@
 """
-hand_inference_v*.ndjson の per-player 特徴量オフセット定義 (442次元)
+hand_inference_v*.ndjson の per-player 特徴量オフセット定義 (476次元)
 
 extract_features.js の make_hand_inference_sample と
 add_yaku_features.py / add_tenpai_features.py で共有する。
 """
 
-# ---- hand_inference per-player 特徴量オフセット (442次元) ----
+# ---- hand_inference per-player 特徴量オフセット (476次元) ----
 
 HI_DISCARD_START  = 0    # target_discard         [0:44]    44次元
 HI_MELD_START     = 44   # target_meld            [44:82]   38次元
@@ -23,15 +23,17 @@ HI_PON_PASS       = 313  # pass_pon_signal        [313:347] 34次元
 HI_WIND_START     = 347  # wind_features(target)  [347:352]  5次元
 HI_CHI_PASS       = 352  # pass_chi_signal        [352:386] 34次元
 HI_CHI_CALLED     = 386  # chi_called_tile        [386:420] 34次元
-HI_YAKU_START     = 420  # yaku_prob (Stage-1)    [420:441] 21次元
-HI_TENPAI         = 441  # tenpai_prob (Stage-1)  [441]      1次元
-HI_TOTAL          = 442  # 合計
+HI_DORA_START     = 420  # dora_features          [420:454] 34次元
+HI_YAKU_START     = 454  # yaku_prob (Stage-1)    [454:475] 21次元
+HI_TENPAI         = 475  # tenpai_prob (Stage-1)  [475]      1次元
+HI_TOTAL          = 476  # 合計
 
 # ---- 各ブロックの長さ ----
 
 HI_SCORE_DIM  = 11
 HI_GAME_DIM   = 9
 HI_WIND_DIM   = 5
+HI_DORA_DIM   = 34
 HI_YAKU_DIM   = 21
 
 # ---- Stage-1 モデル入力フォーマット (108次元) ----
@@ -47,7 +49,7 @@ STAGE1_INPUT_DIM = 108
 
 
 def build_stage1_input(feat: list) -> list:
-    """hand_inference 特徴量 (442次元リスト) から Stage-1 モデル用 108次元入力を構築する。
+    """hand_inference 特徴量 (476次元リスト) から Stage-1 モデル用 108次元入力を構築する。
 
     score と game_state の順序を修正し、wind を正しい位置から取得する。
     """

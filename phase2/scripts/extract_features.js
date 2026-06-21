@@ -328,6 +328,26 @@ function pass_chi_signal(chi_passes, max_discards = 70) {
 }
 
 /**
+ * ドラ表示牌リスト → 実際のドラ牌ごとのカウントベクトル（34次元、/5 正規化）
+ * 表示牌の「次の牌」が実際のドラ（zhenbaopai 変換）。初期1枚＋カン最大4枚で計5枚まで。
+ */
+function zhenbaopai(p) {
+    const s = p[0], n = parseInt(p[1]) || 5;
+    return s === 'z'
+        ? (n < 5 ? s + (n % 4 + 1) : s + ((n - 4) % 3 + 5))
+        : s + (n % 9 + 1);
+}
+
+function dora_features(baopai) {
+    const vec = new Array(N_PAI).fill(0);
+    for (const indicator of (baopai || [])) {
+        const pi = pai_to_idx(zhenbaopai(indicator));
+        if (pi >= 0) vec[pi]++;
+    }
+    return vec.map(v => v / 5);  // 最大5枚で正規化
+}
+
+/**
  * チー受け取り牌信号: ターゲットのチー面子で上家から受け取った牌を返す（34次元バイナリ）
  *
  * direction marker (+/=/-) の直前の数字が鳴いた牌（shoupai.js:284-326 より確認済み）
@@ -492,7 +512,7 @@ function others_meld_type_features(rec) {
  * target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
  * self_discard(44) + self_meld(38) + visible_counts(34) + red_discard_signal(3) +
  * red_visible(3) + other1_discard(44) + other2_discard(44) + pass_pon_signal(34) + wind(5) = 352次元
- * + pass_chi_signal(34) + chi_called_tile_signal(34) = 420次元
+ * + pass_chi_signal(34) + chi_called_tile_signal(34) + dora_features(34) = 454次元
  */
 function make_hand_inference_sample(rec, target_l) {
     // viewer でも target でもない2プレイヤーを相対順で取得
@@ -516,8 +536,9 @@ function make_hand_inference_sample(rec, target_l) {
         ...pass_pon_signal(rec.pon_passes_l?.[target_l]),          // 34
         ...wind_features(rec, target_l),                           // 5
         ...pass_chi_signal(rec.chi_passes_l?.[target_l]),          // 34  ← NEW
-        ...chi_called_tile_signal(rec.melds_l?.[target_l]),        // 34  ← NEW
-    ];  // 420次元 (+ add_yaku 21 + add_tenpai 1 = 442次元)
+        ...chi_called_tile_signal(rec.melds_l?.[target_l]),        // 34
+        ...dora_features(rec.baopai),                              // 34
+    ];  // 454次元 (+ add_yaku 21 + add_tenpai 1 = 476次元)
 
     const { counts: hand_vec_target, red: red_target } = encode_hand_red(rec.hands_l[target_l]);
 

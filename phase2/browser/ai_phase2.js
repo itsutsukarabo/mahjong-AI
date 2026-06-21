@@ -185,6 +185,7 @@
             hands_l,
             scores:     [0, 1, 2, 3].map(id => board_model.defen ? (board_model.defen[id] || 0) : 0),
             remaining:  board_model.shan ? board_model.shan.paishu : 0,
+            baopai:     board_model.shan ? [...(board_model.shan.baopai || [])] : [],
             zhuangfeng: board_model.zhuangfeng || 0,
             jushu:      board_model.jushu      || 0,
             changbang:  board_model.changbang  || 0,
@@ -375,6 +376,22 @@
         ]);
     }
 
+    function zhenbaopai(p) {
+        const s = p[0], n = parseInt(p[1]) || 5;
+        return s === 'z'
+            ? (n < 5 ? s + (n % 4 + 1) : s + ((n - 4) % 3 + 5))
+            : s + (n % 9 + 1);
+    }
+
+    function dora_features(baopai) {
+        const vec = new Array(N_PAI).fill(0);
+        for (const indicator of (baopai || [])) {
+            const pi = pai_to_idx(zhenbaopai(indicator));
+            if (pi >= 0) vec[pi]++;
+        }
+        return vec.map(v => v / 5);
+    }
+
     function chi_called_tile_signal_from_melds(melds) {
         // チー副露の受け取り牌を 34次元バイナリで返す
         // direction marker (+/=/-) の直前の数字が鳴いた牌
@@ -417,6 +434,7 @@
             ...wind_features(state, target_l),                                            // 5
             ...new Array(34).fill(0),                                                     // 34 pass_chi (browser不可のためゼロ)
             ...chi_called_tile_signal_from_melds(state.melds_l[target_l]),                // 34
+            ...dora_features(state.baopai),                                               // 34
             ...(yaku_probs || new Array(21).fill(0)),                                     // 21
             tenpai_prob != null ? tenpai_prob : 0,                                        // 1
         ]);
@@ -998,12 +1016,12 @@
                 }
 
                 // Stage 2: 手牌推定 — (1, 3, 442) バッチ推論
-                const flat_3d = new Float32Array(3 * 442);
+                const flat_3d = new Float32Array(3 * 476);
                 for (let i = 0; i < 3; i++) {
                     const feats = make_hi_features_v29(state, target_ls[i], yaku_probs_list[i], tenpai_prob_list[i]);
-                    flat_3d.set(feats, i * 442);
+                    flat_3d.set(feats, i * 476);
                 }
-                const tensor = new ort.Tensor('float32', flat_3d, [1, 3, 442]);
+                const tensor = new ort.Tensor('float32', flat_3d, [1, 3, 476]);
                 const out = await sessions.hand_inference.run({ features: tensor });
 
                 // 出力テンソルをプレイヤーごとに分割

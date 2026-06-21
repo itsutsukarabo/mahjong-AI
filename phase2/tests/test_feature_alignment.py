@@ -2,7 +2,8 @@
 特徴量アライメントのテスト
 
 検証内容:
-  1. hand_inference_v26.ndjson の特徴量次元が 442 であること
+  1. hand_inference_v26.ndjson の特徴量次元が HI_TOTAL (476) であること
+     ※ v26 は 442次元のため test_feature_total_dim はデータ再生成後にパスする
   2. 既知オフセットの値域が仕様通りであること（バイナリ / 正規化カウント）
   3. build_stage1_input が 108次元を返し、正しい順序でフィールドを配置すること
   4. 修正前の naive スライス (feat[0:108]) と build_stage1_input の出力が
@@ -25,6 +26,7 @@ from feature_offsets import (
     HI_SCORE_START, HI_SCORE_DIM,
     HI_GAME_START, HI_GAME_DIM,
     HI_WIND_START, HI_WIND_DIM,
+    HI_DORA_START, HI_DORA_DIM,
     HI_YAKU_START, HI_YAKU_DIM, HI_TENPAI,
     STAGE1_INPUT_DIM, build_stage1_input,
 )
