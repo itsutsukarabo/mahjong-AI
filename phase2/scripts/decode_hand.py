@@ -408,6 +408,188 @@ def compute_wait_probs(
 
 
 # ============================================================
+# フリーモードビームサーチ (initial_counts 不要)
+# ============================================================
+
+@dataclass
+class FreeDecoderState:
+    """
+    フリーモードビームサーチの状態。
+    initial_counts に依存せず、tile_used で使用枚数を管理する。
+    """
+    tile_used:  np.ndarray  # (34,) 各牌の使用枚数
+    n_used:     int         # 選択済み合計枚数
+    mentsu:     List[int]
+    head:       int
+    tatsu:      int
+    shanpon:    bool
+    tanki_tile: int
+    log_score:  float
+
+    @property
+    def is_complete(self) -> bool:
+        if self.tanki_tile >= 0:
+            return True
+        return self.head >= 0 and self.tatsu >= 0
+
+    def get_wait_tiles(self) -> List[int]:
+        if self.tanki_tile >= 0:
+            return [self.tanki_tile]
+        if self.tatsu < 0:
+            return []
+        if self.shanpon:
+            return [self.head - TOITSU_START, self.tatsu - TOITSU_START]
+        return block_to_waits(self.tatsu)
+
+
+def _can_add(tile_used: np.ndarray, tiles: List[int]) -> bool:
+    for t in tiles:
+        if tile_used[t] >= 4:
+            return False
+    return True
+
+
+def _add(tile_used: np.ndarray, tiles: List[int]) -> np.ndarray:
+    r = tile_used.copy()
+    for t in tiles:
+        r[t] += 1
+    return r
+
+
+def _expand_free(state: FreeDecoderState, log_probs: np.ndarray, k_tiles: int) -> List[FreeDecoderState]:
+    nexts: List[FreeDecoderState] = []
+    R = k_tiles - state.n_used
+
+    if state.head < 0:
+        if R == 1:
+            for t in range(N_PAI):
+                if state.tile_used[t] >= 4:
+                    continue
+                nu = state.tile_used.copy(); nu[t] += 1
+                nexts.append(FreeDecoderState(
+                    tile_used=nu, n_used=state.n_used + 1,
+                    mentsu=list(state.mentsu),
+                    head=-1, tatsu=-1, shanpon=False, tanki_tile=t,
+                    log_score=state.log_score + log_probs[TOITSU_START + t],
+                ))
+            return nexts
+
+        if R >= 4:
+            for b in range(TOITSU_START):
+                tiles = block_to_tiles(b)
+                if not _can_add(state.tile_used, tiles):
+                    continue
+                nexts.append(FreeDecoderState(
+                    tile_used=_add(state.tile_used, tiles), n_used=state.n_used + 3,
+                    mentsu=state.mentsu + [b],
+                    head=-1, tatsu=-1, shanpon=False, tanki_tile=-1,
+                    log_score=state.log_score + log_probs[b],
+                ))
+
+        if R == 4:
+            for b in range(TOITSU_START, RYANMEN_START):
+                tiles = block_to_tiles(b)
+                if not _can_add(state.tile_used, tiles):
+                    continue
+                nexts.append(FreeDecoderState(
+                    tile_used=_add(state.tile_used, tiles), n_used=state.n_used + 2,
+                    mentsu=list(state.mentsu),
+                    head=b, tatsu=-1, shanpon=False, tanki_tile=-1,
+                    log_score=state.log_score + log_probs[b],
+                ))
+        return nexts
+
+    if state.tatsu < 0 and R == 2:
+        head_tile = state.head - TOITSU_START
+        for t in range(N_PAI):
+            if t == head_tile:
+                continue
+            if not _can_add(state.tile_used, [t, t]):
+                continue
+            nexts.append(FreeDecoderState(
+                tile_used=_add(state.tile_used, [t, t]), n_used=state.n_used + 2,
+                mentsu=list(state.mentsu),
+                head=state.head, tatsu=TOITSU_START + t, shanpon=True, tanki_tile=-1,
+                log_score=state.log_score + log_probs[TOITSU_START + t],
+            ))
+        for b in range(RYANMEN_START, N_BLOCKS):
+            tiles = block_to_tiles(b)
+            if not _can_add(state.tile_used, tiles):
+                continue
+            nexts.append(FreeDecoderState(
+                tile_used=_add(state.tile_used, tiles), n_used=state.n_used + 2,
+                mentsu=list(state.mentsu),
+                head=state.head, tatsu=b, shanpon=False, tanki_tile=-1,
+                log_score=state.log_score + log_probs[b],
+            ))
+    return nexts
+
+
+def beam_search_decoder_free(
+    block_logits: np.ndarray,
+    k_tiles:      int,
+    beam_width:   int = 50,
+) -> List[FreeDecoderState]:
+    """
+    initial_counts 不要のフリーモードビームサーチ。
+    tile_used[t] <= 4 制約のみで全ブロック組み合わせを探索する。
+
+    Args:
+        block_logits : (134,) float — block_head の raw logit
+        k_tiles      : 手牌枚数 (13 - 3*n_melds)
+        beam_width   : ビーム幅
+
+    Returns:
+        完成した FreeDecoderState のリスト (最大 beam_width 件, log_score 降順)
+    """
+    probs     = 1.0 / (1.0 + np.exp(-block_logits.astype(np.float64)))
+    log_probs = np.log(probs + 1e-9)
+
+    initial = FreeDecoderState(
+        tile_used=np.zeros(N_PAI, dtype=np.int8), n_used=0,
+        mentsu=[], head=-1, tatsu=-1, shanpon=False, tanki_tile=-1,
+        log_score=0.0,
+    )
+    beam: List[FreeDecoderState] = [initial]
+    completed: List[FreeDecoderState] = []
+
+    for _ in range(8):
+        if not beam:
+            break
+        next_beam: List[FreeDecoderState] = []
+        for state in beam:
+            for ns in _expand_free(state, log_probs, k_tiles):
+                if ns.is_complete:
+                    completed.append(ns)
+                else:
+                    next_beam.append(ns)
+        next_beam.sort(key=lambda s: -s.log_score)
+        beam = next_beam[:beam_width]
+
+    completed.sort(key=lambda s: -s.log_score)
+    return completed[:beam_width]
+
+
+def compute_wait_probs_free(
+    beam_results: List[FreeDecoderState],
+    min_prob:     float = 0.01,
+) -> Dict[int, float]:
+    """beam_search_decoder_free の結果から待ち牌確率を集計する。"""
+    if not beam_results:
+        return {}
+    scores = np.array([s.log_score for s in beam_results], dtype=np.float64)
+    scores -= scores.max()
+    weights = np.exp(scores)
+    weights /= weights.sum()
+    wait_probs = np.zeros(N_PAI)
+    for state, w in zip(beam_results, weights):
+        for t in state.get_wait_tiles():
+            wait_probs[t] += w
+    return {int(i): float(wait_probs[i])
+            for i in np.where(wait_probs >= min_prob)[0]}
+
+
+# ============================================================
 # REINFORCE 用サンプリングデコーダー
 # ============================================================
 

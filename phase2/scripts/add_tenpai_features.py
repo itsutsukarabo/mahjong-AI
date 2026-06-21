@@ -5,7 +5,10 @@ Stage 1 聴牌推定モデルで hand_inference.ndjson の各サンプルに ten
   python add_tenpai_features.py                              # デフォルトパス
   python add_tenpai_features.py --src foo.ndjson --dst bar.ndjson  # 任意パス指定
 
-入力次元は問わない（先頭 108次元をモデルに渡す）。add_yaku_features.py の実行後に呼ぶこと。
+入力次元は問わない。add_yaku_features.py の実行後に呼ぶこと。
+
+NOTE: hand_inference features の score/game_state 順序は tenpai モデルの学習フォーマットと
+異なるため、先頭 108次元をそのまま渡してはいけない。build_stage1_input() で正しく変換する。
 """
 
 import json
@@ -14,6 +17,10 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+
+SCRIPTS_DIR = Path(__file__).parent
+sys.path.insert(0, str(SCRIPTS_DIR))
+from feature_offsets import build_stage1_input, STAGE1_INPUT_DIM  # noqa: E402
 
 # ---- CLI引数 ----
 
@@ -33,7 +40,7 @@ TENPAI_MODEL_DIR = Path(__file__).parent.parent / "models" / "tenpai_inference" 
 INPUT_PATH  = Path(_opts["src"]) if "src" in _opts else FEATURES_DIR / "hand_inference.ndjson"
 OUTPUT_PATH = Path(_opts["dst"]) if "dst" in _opts else INPUT_PATH
 
-TENPAI_INPUT_DIM = 108
+TENPAI_INPUT_DIM = STAGE1_INPUT_DIM  # 108
 BATCH_SIZE = 1024
 
 
@@ -94,7 +101,7 @@ def main():
         for start in range(0, len(all_data), BATCH_SIZE):
             batch = all_data[start:start + BATCH_SIZE]
             x = torch.tensor(
-                [[s["features"][i] for i in range(TENPAI_INPUT_DIM)] for s in batch],
+                [build_stage1_input(s["features"]) for s in batch],
                 dtype=torch.float32,
             )
             with torch.no_grad():

@@ -1,0 +1,14 @@
+device: cuda  resume: True
+読み込み中: /mnt/c/Users/tetsu-4no/mahjong-AI/phase2/data/features/hand_inference_v26.ndjson
+総サンプル数: 205696
+  50000/205696
+  100000/205696
+  150000/205696
+  200000/205696
+/home/tetsu-4no/miniconda3/envs/mahjong/lib/python3.11/site-packages/torch/nn/modules/transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+noise=1839(0.9%)  retreat=6702(3.26%)  push=54502(26.50%)
+pw: block=10.00  wait=10.00  retreat=10.00  push=2.77
+有効サンプル: 205696
+train:164556, val:20569, test:20571
+resume (legacy, no optimizer state): epoch 84  best_val_eae=6.5689

@@ -1,0 +1,101 @@
+device: cuda  resume: False
+読み込み中: /mnt/c/Users/tetsu-4no/mahjong-AI/phase2/data/features/hand_inference_v26.ndjson
+総サンプル数: 205696
+  50000/205696
+  100000/205696
+  150000/205696
+  200000/205696
+/home/tetsu-4no/miniconda3/envs/mahjong/lib/python3.11/site-packages/torch/nn/modules/transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+label_noise=1839 (0.9%)
+label_retreat=6702 (3.26%)
+label_push=54502 (26.50%)
+block pw=10.00  wait pw=10.00  retreat pw=10.00  push pw=2.77
+有効サンプル: 205696
+train: 164556, val: 20569, test: 20571
+v32 ロード  missing=4  unexpected=0
+  missing(新規): ['retreat_head.weight', 'retreat_head.bias', 'push_head.weight', 'push_head.bias']
+epoch   1  nll=0.2339  val_eae=5.7103  val_acc=0.8573  wait_f1=0.4749  hit=0.8666  top1=0.6360
+  [thermal] GPU 79C > 78C - cooling...
+  [thermal] GPU 73C
+  [thermal] cool enough, resuming
+  [saved best_wait f1=0.4749]
+epoch   2  nll=0.2344  val_eae=5.7168  val_acc=0.8573  wait_f1=0.4710  hit=0.8703  top1=0.6323
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 75C
+  [thermal] cool enough, resuming
+epoch   3  nll=0.2349  val_eae=5.7283  val_acc=0.8572  wait_f1=0.4675  hit=0.8718  top1=0.6364
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 75C
+  [thermal] cool enough, resuming
+epoch   4  nll=0.2358  val_eae=5.7494  val_acc=0.8571  wait_f1=0.4715  hit=0.8706  top1=0.6339
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch   5  nll=0.2366  val_eae=5.7262  val_acc=0.8568  wait_f1=0.4647  hit=0.8687  top1=0.6277
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch   6  nll=0.2372  val_eae=5.7750  val_acc=0.8567  wait_f1=0.4610  hit=0.8714  top1=0.6264
+  [thermal] GPU 80C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch   7  nll=0.2381  val_eae=5.7833  val_acc=0.8564  wait_f1=0.4556  hit=0.8716  top1=0.6210
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch   8  nll=0.2386  val_eae=5.8153  val_acc=0.8562  wait_f1=0.4574  hit=0.8645  top1=0.6246
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch   9  nll=0.2380  val_eae=5.7573  val_acc=0.8565  wait_f1=0.4631  hit=0.8666  top1=0.6254
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch  10  nll=0.2376  val_eae=5.7660  val_acc=0.8566  wait_f1=0.4621  hit=0.8666  top1=0.6239
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch  11  nll=0.2376  val_eae=5.7531  val_acc=0.8566  wait_f1=0.4602  hit=0.8672  top1=0.6262
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch  12  nll=0.2373  val_eae=5.7764  val_acc=0.8565  wait_f1=0.4606  hit=0.8662  top1=0.6262
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch  13  nll=0.2374  val_eae=5.7510  val_acc=0.8566  wait_f1=0.4596  hit=0.8672  top1=0.6268
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch  14  nll=0.2374  val_eae=5.7561  val_acc=0.8566  wait_f1=0.4596  hit=0.8664  top1=0.6239
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch  15  nll=0.2375  val_eae=5.7624  val_acc=0.8566  wait_f1=0.4591  hit=0.8670  top1=0.6235
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+epoch  16  nll=0.2373  val_eae=5.7704  val_acc=0.8565  wait_f1=0.4588  hit=0.8679  top1=0.6244
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+early stopping
+
+[model.pt] test_eae=5.6694  test_acc=0.8582
+  wait_f1: 0.477
+  wait_prec: 0.3663
+  wait_recall: 0.8565
+  wait_hit_rate: 0.8735
+  wait_top1_acc: 0.6542
+  n_tenpai: 5274
+
+[model_best_wait.pt]
+  wait_f1: 0.477
+  wait_prec: 0.3663
+  wait_recall: 0.8565
+  wait_hit_rate: 0.8735
+  wait_top1_acc: 0.6542
+  n_tenpai: 5274
+
+ONNX保存: /mnt/c/Users/tetsu-4no/mahjong-AI/phase2/models/hand_inference/v34/model.onnx

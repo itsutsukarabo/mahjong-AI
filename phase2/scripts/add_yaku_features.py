@@ -5,7 +5,10 @@ Stage 1 役推定モデルで hand_inference.ndjson の各サンプルに yaku_p
   python add_yaku_features.py                              # デフォルトパス
   python add_yaku_features.py --src foo.ndjson --dst bar.ndjson  # 任意パス指定
 
-入力次元は問わない（先頭 108次元をモデルに渡す）。
+入力次元は問わない。
+
+NOTE: hand_inference features の score/game_state 順序は yaku モデルの学習フォーマットと
+異なるため、先頭 108次元をそのまま渡してはいけない。build_stage1_input() で正しく変換する。
 """
 
 import json
@@ -14,6 +17,10 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+
+SCRIPTS_DIR = Path(__file__).parent
+sys.path.insert(0, str(SCRIPTS_DIR))
+from feature_offsets import build_stage1_input, STAGE1_INPUT_DIM  # noqa: E402
 
 # ---- CLI引数 ----
 
@@ -33,7 +40,7 @@ YAKU_MODEL_DIR = Path(__file__).parent.parent / "models" / "yaku_inference" / "v
 INPUT_PATH  = Path(_opts["src"]) if "src" in _opts else FEATURES_DIR / "hand_inference.ndjson"
 OUTPUT_PATH = Path(_opts["dst"]) if "dst" in _opts else INPUT_PATH
 
-YAKU_INPUT_DIM  = 108
+YAKU_INPUT_DIM  = STAGE1_INPUT_DIM  # 108
 YAKU_OUTPUT_DIM = 21
 BATCH_SIZE = 1024
 
@@ -96,7 +103,7 @@ def main():
         for start in range(0, len(all_data), BATCH_SIZE):
             batch = all_data[start:start + BATCH_SIZE]
             x = torch.tensor(
-                [[s["features"][i] for i in range(YAKU_INPUT_DIM)] for s in batch],
+                [build_stage1_input(s["features"]) for s in batch],
                 dtype=torch.float32,
             )
             with torch.no_grad():

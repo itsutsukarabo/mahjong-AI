@@ -1,0 +1,9 @@
+{
+  "n_samples": 5000,
+  "wait_prec": 0.1333,
+  "wait_recall": 0.1566,
+  "wait_f1": 0.1303,
+  "no_result_rate": 0.0,
+  "model": "hand_inference/v29",
+  "decoder": "beam_search_free (k_tiles, beam_width=50)"
+}

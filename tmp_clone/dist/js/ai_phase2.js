@@ -585,6 +585,224 @@
 
     /* ---- v29: block_logits 134-dim → 表示データ ---- */
 
+    // ============================================================
+    // ビームサーチデコーダー (decode_hand.py の JS 移植)
+    // block_logits から4面子1雀頭構造制約で有効な聴牌分解を探索する
+    // ============================================================
+
+    const _TOITSU_START  = 55;
+    const _RYANMEN_START = 89;
+    const _KANCHAN_START = 113;
+
+    function _block_to_tiles(b) {
+        if (b < 21) {
+            const s = Math.floor(b / 7), n = b % 7, base = s * 9;
+            return [base+n, base+n+1, base+n+2];
+        } else if (b < 55) {
+            const i = b - 21; return [i, i, i];
+        } else if (b < 89) {
+            const i = b - 55; return [i, i];
+        } else if (b < 113) {
+            const idx = b - 89, s = Math.floor(idx / 8), n = idx % 8, base = s * 9;
+            return [base+n, base+n+1];
+        } else {
+            const idx = b - 113, s = Math.floor(idx / 7), n = idx % 7, base = s * 9;
+            return [base+n, base+n+2];
+        }
+    }
+
+    function _block_to_waits(b) {
+        if (b < _TOITSU_START)  return [];
+        if (b < _RYANMEN_START) return [b - _TOITSU_START];
+        if (b < _KANCHAN_START) {
+            const idx = b - _RYANMEN_START, s = Math.floor(idx / 8), n = idx % 8, base = s * 9;
+            if (n === 0) return [base + 2];
+            if (n === 7) return [base + 6];
+            return [base+n-1, base+n+2];
+        }
+        const idx = b - _KANCHAN_START, s = Math.floor(idx / 7), n = idx % 7;
+        return [s*9 + n + 1];
+    }
+
+    function _tile_to_name(t) {
+        if (t <  9) return 'm' + (t + 1);
+        if (t < 18) return 'p' + (t - 8);
+        if (t < 27) return 's' + (t - 17);
+        return 'z' + (t - 26);
+    }
+
+    function _block_to_name(b) {
+        const seen = [];
+        for (const t of _block_to_tiles(b)) {
+            const s = _tile_to_name(t);
+            if (!seen.includes(s)) seen.push(s);
+        }
+        return seen.join('');
+    }
+
+    // フリーモード: initial_counts不要、tile_used[34]で各牌の使用数を管理
+    function _can_add(tile_used, tiles) {
+        for (const t of tiles) { if (tile_used[t] >= 4) return false; }
+        return true;
+    }
+
+    function _add_tiles(tile_used, tiles) {
+        const r = tile_used.slice();
+        for (const t of tiles) r[t]++;
+        return r;
+    }
+
+    function _expand_free(state, logProbs, k_tiles) {
+        const nexts = [];
+        const R = k_tiles - state.n_used;  // 残り選択タイル数
+
+        if (state.head < 0) {
+            if (R === 1) {
+                // 単騎: 残り1枚を単騎牌に
+                for (let t = 0; t < 34; t++) {
+                    if (state.tile_used[t] >= 4) continue;
+                    const nu = state.tile_used.slice(); nu[t]++;
+                    nexts.push({ tile_used: nu, n_used: state.n_used + 1,
+                                 mentsu: state.mentsu.slice(),
+                                 head: -1, tatsu: -1, shanpon: false, tanki_tile: t,
+                                 log_score: state.log_score + logProbs[_TOITSU_START + t] });
+                }
+                return nexts;
+            }
+            if (R >= 4) {
+                // 面子追加
+                for (let b = 0; b < _TOITSU_START; b++) {
+                    const tiles = _block_to_tiles(b);
+                    if (!_can_add(state.tile_used, tiles)) continue;
+                    nexts.push({ tile_used: _add_tiles(state.tile_used, tiles),
+                                 n_used: state.n_used + 3,
+                                 mentsu: [...state.mentsu, b],
+                                 head: -1, tatsu: -1, shanpon: false, tanki_tile: -1,
+                                 log_score: state.log_score + logProbs[b] });
+                }
+            }
+            if (R === 4) {
+                // 雀頭選択 (→残り2枚でターツへ)
+                for (let b = _TOITSU_START; b < _RYANMEN_START; b++) {
+                    const tiles = _block_to_tiles(b);
+                    if (!_can_add(state.tile_used, tiles)) continue;
+                    nexts.push({ tile_used: _add_tiles(state.tile_used, tiles),
+                                 n_used: state.n_used + 2,
+                                 mentsu: state.mentsu.slice(),
+                                 head: b, tatsu: -1, shanpon: false, tanki_tile: -1,
+                                 log_score: state.log_score + logProbs[b] });
+                }
+            }
+            return nexts;
+        }
+
+        // 雀頭確定済み → ターツ選択
+        if (state.tatsu < 0 && R === 2) {
+            const head_tile = state.head - _TOITSU_START;
+            // 双碰: 異なる牌の対子
+            for (let t = 0; t < 34; t++) {
+                if (t === head_tile) continue;
+                if (!_can_add(state.tile_used, [t, t])) continue;
+                nexts.push({ tile_used: _add_tiles(state.tile_used, [t, t]),
+                             n_used: state.n_used + 2,
+                             mentsu: state.mentsu.slice(),
+                             head: state.head, tatsu: _TOITSU_START + t,
+                             shanpon: true, tanki_tile: -1,
+                             log_score: state.log_score + logProbs[_TOITSU_START + t] });
+            }
+            // 両面/辺張/嵌張
+            for (let b = _RYANMEN_START; b < 134; b++) {
+                const tiles = _block_to_tiles(b);
+                if (!_can_add(state.tile_used, tiles)) continue;
+                nexts.push({ tile_used: _add_tiles(state.tile_used, tiles),
+                             n_used: state.n_used + 2,
+                             mentsu: state.mentsu.slice(),
+                             head: state.head, tatsu: b, shanpon: false, tanki_tile: -1,
+                             log_score: state.log_score + logProbs[b] });
+            }
+        }
+        return nexts;
+    }
+
+    function _is_complete_free(state, k_tiles) {
+        if (state.n_used !== k_tiles) return false;
+        if (state.tanki_tile >= 0) return true;
+        return state.head >= 0 && state.tatsu >= 0;
+    }
+
+    function _get_wait_tiles(state) {
+        if (state.tanki_tile >= 0) return [state.tanki_tile];
+        if (state.tatsu < 0) return [];
+        if (state.shanpon) return [state.head - _TOITSU_START, state.tatsu - _TOITSU_START];
+        return _block_to_waits(state.tatsu);
+    }
+
+    function _get_tatsu_label(state) {
+        if (state.tanki_tile >= 0) return _tile_to_name(state.tanki_tile) + '単騎';
+        if (state.tatsu < 0) return '?';
+        if (state.shanpon) {
+            return (_tile_to_name(state.head - _TOITSU_START) +
+                    _tile_to_name(state.tatsu - _TOITSU_START) + '双碰');
+        }
+        return _block_to_name(state.tatsu);
+    }
+
+    function beam_search_decoder_js(block_logits_134, k_tiles, beam_width = 50) {
+        const sigmoid = x => 1 / (1 + Math.exp(-x));
+        const logProbs = Array.from(block_logits_134).map(x => Math.log(sigmoid(x) + 1e-9));
+
+        const initial = { tile_used: new Array(34).fill(0), n_used: 0,
+                          mentsu: [], head: -1, tatsu: -1, shanpon: false, tanki_tile: -1,
+                          log_score: 0.0 };
+        let beam = [initial];
+        const completed = [];
+
+        for (let step = 0; step < 8; step++) {
+            if (!beam.length) break;
+            const next_beam = [];
+            for (const state of beam) {
+                for (const ns of _expand_free(state, logProbs, k_tiles)) {
+                    (_is_complete_free(ns, k_tiles) ? completed : next_beam).push(ns);
+                }
+            }
+            next_beam.sort((a, b) => b.log_score - a.log_score);
+            beam = next_beam.slice(0, beam_width);
+        }
+
+        completed.sort((a, b) => b.log_score - a.log_score);
+        return completed.slice(0, beam_width);
+    }
+
+    function compute_likely_waits_from_beam(beam_results) {
+        if (!beam_results.length) return [];
+
+        const scores     = beam_results.map(s => s.log_score);
+        const max_score  = Math.max(...scores);
+        const weights    = scores.map(s => Math.exp(s - max_score));
+        const total_w    = weights.reduce((a, b) => a + b, 0);
+        const norm_w     = weights.map(w => w / total_w);
+
+        // 同じ待ち牌集合でグループ化して確率を合算
+        const group_map = new Map();
+        beam_results.forEach((state, i) => {
+            const wait_idxs = _get_wait_tiles(state).slice().sort((a, b) => a - b);
+            if (!wait_idxs.length) return;
+            const key = wait_idxs.join(',');
+            if (!group_map.has(key)) {
+                group_map.set(key, {
+                    tatsu:      _get_tatsu_label(state),
+                    wait_tiles: wait_idxs.map(_tile_to_name),
+                    prob:       0,
+                });
+            }
+            group_map.get(key).prob += norm_w[i];
+        });
+
+        const result = Array.from(group_map.values());
+        result.sort((a, b) => b.prob - a.prob);
+        return result;
+    }
+
     function make_block_display_data_v29(block_logits_134, probs_per_tile, melds, tenpai_prob) {
         // block_logits_134: Float32Array または Array (134要素)
         // ブロックインデックス:
@@ -602,6 +820,12 @@
         const pair_dist     = prob.slice(55,  89).map(to_dist);   // 34種
         const ryanmen_dist  = prob.slice(89,  113).map(to_dist);  // 24種
         const kanchan_dist  = prob.slice(113, 134).map(to_dist);  // 21種
+
+        // フリーモードビームサーチ: initial_counts不要、block_logitsのみで探索
+        const n_melds_bev = (melds || []).filter(Boolean).length;
+        const k_tiles_bev = 13 - 3 * n_melds_bev;
+        const beam_results = beam_search_decoder_js(block_logits_134, k_tiles_bev);
+        const likely_waits = compute_likely_waits_from_beam(beam_results);
 
         const hand_str = get_best_hand_str(probs_per_tile, melds);
         let shanten = null, tingpai = null, decomps = null;
@@ -630,6 +854,7 @@
             triplet_dist, seq_dist, pair_dist, ryanmen_dist, kanchan_dist,
             hand_str, shanten, tingpai, decomps,
             tenpai_prob: tenpai_prob != null ? tenpai_prob : undefined,
+            likely_waits,
         };
     }
 
@@ -788,6 +1013,7 @@
                 const logits_data = out['logits'].data;
                 const red_data    = out['red_logits'] ? out['red_logits'].data : null;
                 const block_data  = out['block_logits'] ? out['block_logits'].data : null;
+                const wait_data   = out['wait_logits'] ? out['wait_logits'].data : null; // v32: 113-dim tatsu
 
                 const players = [];
                 for (let i = 0; i < 3; i++) {
@@ -816,9 +1042,15 @@
                         block_ev = make_block_display_data(probs_per_tile, state.melds_l[target_l]);
                     }
 
+                    let tatsu_probs = null;
+                    if (wait_data) {
+                        const wl = wait_data.slice(i * 113, (i + 1) * 113);
+                        tatsu_probs = Array.from(wl).map(x => 1 / (1 + Math.exp(-x)));
+                    }
+
                     players.push({
                         l: target_l, rel: i + 1, seat_name: SEAT_NAMES[i],
-                        probs_per_tile, aka, block_ev,
+                        probs_per_tile, aka, block_ev, tatsu_probs,
                     });
                 }
                 result.hand_inference = { players };
@@ -835,7 +1067,7 @@
     async function load_sessions() {
         const s = {};
         const models = [
-            ['hand_inference', MODEL_BASE + 'hand_inference/v29/model.onnx'],
+            ['hand_inference', MODEL_BASE + 'hand_inference/v32/model.onnx'],
             ['behavior_clone', MODEL_BASE + 'behavior_clone/v2/model.onnx'],
             ['value_function', MODEL_BASE + 'value_function/v2/model.onnx'],
             ['yaku_inference',   MODEL_BASE + 'yaku_inference/v1/model.onnx'],

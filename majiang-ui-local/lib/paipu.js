@@ -975,10 +975,50 @@ module.exports = class Paipu {
                 return wrap;
             };
 
-            const make_best_hand_section = (block_ev) => {
-                const div = $('<div class="ai-hi-best-hand">');
+            const PAI_NAMES_HI = [];
+            for (let i = 1; i <= 9; i++) PAI_NAMES_HI.push('m' + i);
+            for (let i = 1; i <= 9; i++) PAI_NAMES_HI.push('p' + i);
+            for (let i = 1; i <= 9; i++) PAI_NAMES_HI.push('s' + i);
+            for (let i = 1; i <= 7; i++) PAI_NAMES_HI.push('z' + i);
 
-                // v29: tenpai_prob + likely_waits がある場合は「聴牌推定形」として表示
+            // v32: 113クラスターツ形デコードテーブル
+            const TATSU_TABLE = (() => {
+                const P = PAI_NAMES_HI;
+                const SC = ['m','p','s'];
+                const tbl = [];
+                // 両面 (0..17): suit*6 + (n-1), n=1..6
+                for (let suit = 0; suit < 3; suit++) {
+                    for (let n = 1; n <= 6; n++) {
+                        const t = suit * 9 + n;
+                        tbl.push({ type: 'ryanmen', name: '両面' + (n+1) + (n+2) + SC[suit], wait_tiles: [t-1, t+2] });
+                    }
+                }
+                // 辺張 (18..23)
+                for (let suit = 0; suit < 3; suit++) {
+                    tbl.push({ type: 'penchan', name: '辺張12' + SC[suit], wait_tiles: [suit*9 + 2] });
+                    tbl.push({ type: 'penchan', name: '辺張89' + SC[suit], wait_tiles: [suit*9 + 6] });
+                }
+                // 嵌張 (24..44): suit*7 + n, n=0..6
+                for (let suit = 0; suit < 3; suit++) {
+                    for (let n = 0; n <= 6; n++) {
+                        const t = suit * 9 + n;
+                        tbl.push({ type: 'kanchan', name: '嵌張' + (n+1) + (n+3) + SC[suit], wait_tiles: [t+1] });
+                    }
+                }
+                // 単騎 (45..78)
+                for (let t = 0; t < 34; t++) {
+                    tbl.push({ type: 'tanki', name: '単騎' + P[t], wait_tiles: [t] });
+                }
+                // 双碰 (79..112): 各牌個別エントリ、表示時にペアリング
+                for (let t = 0; t < 34; t++) {
+                    tbl.push({ type: 'shanpon', pai_name: P[t], wait_tiles: [t] });
+                }
+                return tbl;
+            })();
+
+            const make_best_hand_section = (block_ev, tatsu_probs) => {
+                const div = $('<div class="ai-hi-best-hand">');
+                // tenpai_prob がある場合は「聴牌推定形」として表示
                 if (block_ev.tenpai_prob !== undefined) {
                     const tp_pct = block_ev.tenpai_prob !== null
                         ? Math.round(block_ev.tenpai_prob * 100) + '%' : '-';
@@ -993,18 +1033,37 @@ module.exports = class Paipu {
                     } else if (block_ev.hand_str) {
                         div.append($('<span class="ai-hi-hand-str">').text(block_ev.hand_str));
                     }
-                    // v29: ターツ直接推定による待ち候補
-                    if (block_ev.likely_waits && block_ev.likely_waits.length > 0) {
-                        const TATSU_THRESH = 0.05;  // ビームサーチ確率は正規化済みのため低め
-                        const top = block_ev.likely_waits
-                            .filter(w => w.prob >= TATSU_THRESH)
-                            .slice(0, 5);
-                        if (top.length > 0) {
-                            const parts = top.map(w => {
-                                const pct = Math.round(w.prob * 100) + '%';
-                                return w.tatsu + '→' + w.wait_tiles.join('/') + '(' + pct + ')';
-                            });
-                            div.append($('<div class="ai-hi-tatsu-waits">').text('ターツ推定: ' + parts.join('  ')));
+                    // v32: 113クラスターツ形による待ち推定
+                    if (tatsu_probs) {
+                        const THRESH = 0.3;
+                        const parts = [];
+                        // 両面/辺張/嵌張/単騎 (idx 0..78)
+                        for (let idx = 0; idx < 79; idx++) {
+                            if (tatsu_probs[idx] >= THRESH) {
+                                parts.push({ label: TATSU_TABLE[idx].name, prob: tatsu_probs[idx] });
+                            }
+                        }
+                        // 双碰 (idx 79..112): prob上位からペアリング
+                        const sp = [];
+                        for (let idx = 79; idx < 113; idx++) {
+                            if (tatsu_probs[idx] >= THRESH) {
+                                sp.push({ name: TATSU_TABLE[idx].pai_name, prob: tatsu_probs[idx] });
+                            }
+                        }
+                        sp.sort((a, b) => b.prob - a.prob);
+                        for (let i = 0; i + 1 < sp.length; i += 2) {
+                            const avg = (sp[i].prob + sp[i+1].prob) / 2;
+                            parts.push({ label: '双碰' + sp[i].name + '/' + sp[i+1].name, prob: avg });
+                        }
+                        if (sp.length % 2 === 1) {
+                            const last = sp[sp.length - 1];
+                            parts.push({ label: '双碰' + last.name, prob: last.prob });
+                        }
+                        parts.sort((a, b) => b.prob - a.prob);
+                        const top5 = parts.slice(0, 5);
+                        if (top5.length > 0) {
+                            const text = top5.map(p => p.label + '(' + Math.round(p.prob * 100) + '%)').join(' ');
+                            div.append($('<div class="ai-hi-tatsu-waits">').text('待ち推定: ' + text));
                         }
                     }
                     return div;
@@ -1028,7 +1087,7 @@ module.exports = class Paipu {
                 return div;
             };
 
-            const make_block_section = (block_ev) => {
+            const make_block_section = (block_ev, tatsu_probs) => {
                 const wrap = $('<div class="ai-hi-block-section">');
                 const label = block_ev.tenpai_prob !== undefined
                     ? 'ブロック期待値（聴牌形）' : 'ブロック期待値';
@@ -1110,7 +1169,7 @@ module.exports = class Paipu {
                     wrap.append(table);
                 }
 
-                wrap.append(make_best_hand_section(block_ev));
+                wrap.append(make_best_hand_section(block_ev, tatsu_probs));
                 return wrap;
             };
 
@@ -1165,7 +1224,7 @@ module.exports = class Paipu {
                 table.append(tbody);
                 section.append(table);
 
-                if (p.block_ev) section.append(make_block_section(p.block_ev));
+                if (p.block_ev) section.append(make_block_section(p.block_ev, p.tatsu_probs));
                 hi_body.append(section);
             }
         } else {
