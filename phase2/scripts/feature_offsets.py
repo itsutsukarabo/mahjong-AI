@@ -23,10 +23,19 @@ HI_PON_PASS       = 313  # pass_pon_signal        [313:347] 34次元
 HI_WIND_START     = 347  # wind_features(target)  [347:352]  5次元
 HI_CHI_PASS       = 352  # pass_chi_signal        [352:386] 34次元
 HI_CHI_CALLED     = 386  # chi_called_tile        [386:420] 34次元
-HI_DORA_START     = 420  # dora_features          [420:454] 34次元
-HI_YAKU_START     = 454  # yaku_prob (Stage-1)    [454:475] 21次元
-HI_TENPAI         = 475  # tenpai_prob (Stage-1)  [475]      1次元
-HI_TOTAL          = 476  # 合計
+HI_DORA_START     = 420  # dora_features          [420:454]  34次元
+HI_OTHER1_MELD    = 454  # other1_meld_features   [454:492]  38次元
+HI_OTHER2_MELD    = 492  # other2_meld_features   [492:530]  38次元
+HI_SELF_PON_PASS  = 530  # self_pon_pass_signal   [530:564]  34次元
+HI_O1_PON_PASS    = 564  # other1_pon_pass_signal [564:598]  34次元
+HI_O2_PON_PASS    = 598  # other2_pon_pass_signal [598:632]  34次元
+HI_SELF_CHI_PASS  = 632  # self_chi_pass_signal   [632:666]  34次元
+HI_O1_CHI_PASS    = 666  # other1_chi_pass_signal [666:700]  34次元
+HI_O2_CHI_PASS    = 700  # other2_chi_pass_signal [700:734]  34次元
+HI_LIZHIBANG      = 734  # lizhibang (正規化)     [734]       1次元
+HI_YAKU_START     = 735  # yaku_prob (Stage-1)    [735:756]  21次元
+HI_TENPAI         = 756  # tenpai_prob (Stage-1)  [756]       1次元
+HI_TOTAL          = 757  # 合計
 
 # ---- 各ブロックの長さ ----
 
@@ -34,6 +43,9 @@ HI_SCORE_DIM  = 11
 HI_GAME_DIM   = 9
 HI_WIND_DIM   = 5
 HI_DORA_DIM   = 34
+HI_MELD_DIM   = 38
+HI_PON_DIM    = 34
+HI_CHI_DIM    = 34
 HI_YAKU_DIM   = 21
 
 # ---- Stage-1 モデル入力フォーマット (108次元) ----
@@ -49,7 +61,7 @@ STAGE1_INPUT_DIM = 108
 
 
 def build_stage1_input(feat: list) -> list:
-    """hand_inference 特徴量 (476次元リスト) から Stage-1 モデル用 108次元入力を構築する。
+    """hand_inference 特徴量 (757次元リスト) から Stage-1 モデル用 108次元入力を構築する。
 
     score と game_state の順序を修正し、wind を正しい位置から取得する。
     """

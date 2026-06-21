@@ -27,6 +27,10 @@ from feature_offsets import (
     HI_GAME_START, HI_GAME_DIM,
     HI_WIND_START, HI_WIND_DIM,
     HI_DORA_START, HI_DORA_DIM,
+    HI_OTHER1_MELD, HI_OTHER2_MELD, HI_MELD_DIM,
+    HI_SELF_PON_PASS, HI_O1_PON_PASS, HI_O2_PON_PASS,
+    HI_SELF_CHI_PASS, HI_O1_CHI_PASS, HI_O2_CHI_PASS, HI_PON_DIM, HI_CHI_DIM,
+    HI_LIZHIBANG,
     HI_YAKU_START, HI_YAKU_DIM, HI_TENPAI,
     STAGE1_INPUT_DIM, build_stage1_input,
 )
@@ -210,4 +214,121 @@ def test_naive_slice_prefix_same(samples):
             fixed = build_stage1_input(feat)
             assert naive[:83] == fixed[:83], (
                 f"sample {i} player {p}: 先頭 83次元が異なる（想定外）"
+            )
+
+
+# ---- 5. オフセット連続性チェック（定数の整合性） ----
+
+def test_offset_continuity():
+    """全ブロックが隙間なく連続して並んでいること"""
+    blocks = [
+        (HI_DISCARD_START,  44, "target_discard"),
+        (HI_MELD_START,     38, "target_meld"),
+        (HI_RIICHI,          1, "riichi"),
+        (HI_SCORE_START,    11, "score"),
+        (HI_GAME_START,      9, "game_state"),
+        (103,               44, "self_discard"),
+        (147,               38, "self_meld"),
+        (185,               34, "visible_counts"),
+        (219,                3, "red_discard_sig"),
+        (222,                3, "red_visible"),
+        (225,               44, "other1_discard"),
+        (269,               44, "other2_discard"),
+        (313,               34, "pass_pon_signal"),
+        (HI_WIND_START,      5, "wind"),
+        (352,               34, "pass_chi_signal"),
+        (386,               34, "chi_called_tile"),
+        (HI_DORA_START,  HI_DORA_DIM, "dora"),
+        (HI_OTHER1_MELD, HI_MELD_DIM, "other1_meld"),
+        (HI_OTHER2_MELD, HI_MELD_DIM, "other2_meld"),
+        (HI_SELF_PON_PASS, HI_PON_DIM, "self_pon_pass"),
+        (HI_O1_PON_PASS,  HI_PON_DIM, "other1_pon_pass"),
+        (HI_O2_PON_PASS,  HI_PON_DIM, "other2_pon_pass"),
+        (HI_SELF_CHI_PASS, HI_CHI_DIM, "self_chi_pass"),
+        (HI_O1_CHI_PASS,  HI_CHI_DIM, "other1_chi_pass"),
+        (HI_O2_CHI_PASS,  HI_CHI_DIM, "other2_chi_pass"),
+        (HI_LIZHIBANG,      1, "lizhibang"),
+        (HI_YAKU_START,  HI_YAKU_DIM, "yaku_prob"),
+        (HI_TENPAI,         1, "tenpai_prob"),
+    ]
+    cursor = 0
+    for start, dim, name in blocks:
+        assert start == cursor, f"{name}: オフセット {start} ≠ 期待値 {cursor}"
+        cursor += dim
+    assert cursor == HI_TOTAL, f"合計次元 {cursor} ≠ HI_TOTAL={HI_TOTAL}"
+
+
+# ---- 6. 新規特徴量ブロックの値域チェック（データ再生成後に有効） ----
+
+def test_dora_features_range(samples):
+    """dora_features は 0.0〜1.0（最大5ドラ/5=1.0）"""
+    for i, s in enumerate(samples):
+        for p, feat in enumerate(s["features"]):
+            if len(feat) < HI_DORA_START + HI_DORA_DIM:
+                pytest.skip("データ再生成前（476次元以前）のためスキップ")
+            block = feat[HI_DORA_START : HI_DORA_START + HI_DORA_DIM]
+            for j, v in enumerate(block):
+                assert 0.0 <= v <= 1.0, (
+                    f"sample {i} player {p} dora[{j}]={v:.4f} out of [0,1]"
+                )
+
+
+def test_other_meld_features_range(samples):
+    """other1/other2 の meld_features: tile_presence は 0/1、カウントは 0〜4"""
+    for i, s in enumerate(samples):
+        for p, feat in enumerate(s["features"]):
+            if len(feat) < HI_OTHER2_MELD + HI_MELD_DIM:
+                pytest.skip("データ再生成前のためスキップ")
+            for start, name in [(HI_OTHER1_MELD, "other1_meld"), (HI_OTHER2_MELD, "other2_meld")]:
+                tile_block = feat[start : start + 34]        # tile presence (0/1)
+                count_block = feat[start + 34 : start + 38]  # chi/pon/kan/kita counts
+                for j, v in enumerate(tile_block):
+                    assert v in (0, 1), f"sample {i} {name} tile[{j}]={v} not binary"
+                for j, v in enumerate(count_block):
+                    assert 0 <= v <= 4, f"sample {i} {name} count[{j}]={v} out of [0,4]"
+
+
+def test_pon_pass_signals_range(samples):
+    """self/other1/other2 の pon_pass_signal は 0.0 以上（t/max_discards の合計）"""
+    pass_starts = [
+        (HI_SELF_PON_PASS, "self_pon"),
+        (HI_O1_PON_PASS,   "other1_pon"),
+        (HI_O2_PON_PASS,   "other2_pon"),
+    ]
+    for i, s in enumerate(samples):
+        for p, feat in enumerate(s["features"]):
+            if len(feat) < HI_O2_PON_PASS + HI_PON_DIM:
+                pytest.skip("データ再生成前のためスキップ")
+            for start, name in pass_starts:
+                block = feat[start : start + HI_PON_DIM]
+                for j, v in enumerate(block):
+                    assert v >= 0.0, f"sample {i} player {p} {name}[{j}]={v} < 0"
+
+
+def test_chi_pass_signals_range(samples):
+    """self/other1/other2 の chi_pass_signal は 0.0 以上"""
+    pass_starts = [
+        (HI_SELF_CHI_PASS, "self_chi"),
+        (HI_O1_CHI_PASS,   "other1_chi"),
+        (HI_O2_CHI_PASS,   "other2_chi"),
+    ]
+    for i, s in enumerate(samples):
+        for p, feat in enumerate(s["features"]):
+            if len(feat) < HI_O2_CHI_PASS + HI_CHI_DIM:
+                pytest.skip("データ再生成前のためスキップ")
+            for start, name in pass_starts:
+                block = feat[start : start + HI_CHI_DIM]
+                for j, v in enumerate(block):
+                    assert v >= 0.0, f"sample {i} player {p} {name}[{j}]={v} < 0"
+
+
+def test_lizhibang_range(samples):
+    """lizhibang は 0.0〜1.0（min(count,8)/8 で正規化）"""
+    for i, s in enumerate(samples):
+        for p, feat in enumerate(s["features"]):
+            if len(feat) < HI_LIZHIBANG + 1:
+                pytest.skip("データ再生成前のためスキップ")
+            v = feat[HI_LIZHIBANG]
+            assert 0.0 <= v <= 1.0, (
+                f"sample {i} player {p} lizhibang={v:.4f} out of [0,1]"
             )

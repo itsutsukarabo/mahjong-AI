@@ -513,6 +513,10 @@ function others_meld_type_features(rec) {
  * self_discard(44) + self_meld(38) + visible_counts(34) + red_discard_signal(3) +
  * red_visible(3) + other1_discard(44) + other2_discard(44) + pass_pon_signal(34) + wind(5) = 352次元
  * + pass_chi_signal(34) + chi_called_tile_signal(34) + dora_features(34) = 454次元
+ * + other1_meld(38) + other2_meld(38) = 530次元
+ * + self_pon_pass(34) + other1_pon_pass(34) + other2_pon_pass(34) = 632次元
+ * + self_chi_pass(34) + other1_chi_pass(34) + other2_chi_pass(34) = 734次元
+ * + lizhibang(1) = 735次元
  */
 function make_hand_inference_sample(rec, target_l) {
     // viewer でも target でもない2プレイヤーを相対順で取得
@@ -538,7 +542,16 @@ function make_hand_inference_sample(rec, target_l) {
         ...pass_chi_signal(rec.chi_passes_l?.[target_l]),          // 34  ← NEW
         ...chi_called_tile_signal(rec.melds_l?.[target_l]),        // 34
         ...dora_features(rec.baopai),                              // 34
-    ];  // 454次元 (+ add_yaku 21 + add_tenpai 1 = 476次元)
+        ...meld_features(rec.melds_l[other_ls[0]]),                // 38 other1_meld
+        ...meld_features(rec.melds_l[other_ls[1]]),                // 38 other2_meld
+        ...pass_pon_signal(rec.pon_passes_l?.[rec.l]),             // 34 self_pon_pass
+        ...pass_pon_signal(rec.pon_passes_l?.[other_ls[0]]),       // 34 other1_pon_pass
+        ...pass_pon_signal(rec.pon_passes_l?.[other_ls[1]]),       // 34 other2_pon_pass
+        ...pass_chi_signal(rec.chi_passes_l?.[rec.l]),             // 34 self_chi_pass
+        ...pass_chi_signal(rec.chi_passes_l?.[other_ls[0]]),       // 34 other1_chi_pass
+        ...pass_chi_signal(rec.chi_passes_l?.[other_ls[1]]),       // 34 other2_chi_pass
+        Math.min(rec.lizhibang || 0, 8) / 8,                       //  1 lizhibang
+    ];  // 735次元 (+ add_yaku 21 + add_tenpai 1 = 757次元)
 
     const { counts: hand_vec_target, red: red_target } = encode_hand_red(rec.hands_l[target_l]);
 

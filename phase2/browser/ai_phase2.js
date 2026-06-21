@@ -186,6 +186,7 @@
             scores:     [0, 1, 2, 3].map(id => board_model.defen ? (board_model.defen[id] || 0) : 0),
             remaining:  board_model.shan ? board_model.shan.paishu : 0,
             baopai:     board_model.shan ? [...(board_model.shan.baopai || [])] : [],
+            lizhibang:  board_model.lizhibang || 0,
             zhuangfeng: board_model.zhuangfeng || 0,
             jushu:      board_model.jushu      || 0,
             changbang:  board_model.changbang  || 0,
@@ -435,6 +436,15 @@
             ...new Array(34).fill(0),                                                     // 34 pass_chi (browser不可のためゼロ)
             ...chi_called_tile_signal_from_melds(state.melds_l[target_l]),                // 34
             ...dora_features(state.baopai),                                               // 34
+            ...meld_features(state.melds_l[other_ls[0]]),                                 // 38 other1_meld
+            ...meld_features(state.melds_l[other_ls[1]]),                                 // 38 other2_meld
+            ...pass_pon_signal_from_state(state, state.l),                                // 34 self_pon_pass
+            ...pass_pon_signal_from_state(state, other_ls[0]),                            // 34 other1_pon_pass
+            ...pass_pon_signal_from_state(state, other_ls[1]),                            // 34 other2_pon_pass
+            ...new Array(34).fill(0),                                                     // 34 self_chi_pass (browser不可のためゼロ)
+            ...new Array(34).fill(0),                                                     // 34 other1_chi_pass (browser不可のためゼロ)
+            ...new Array(34).fill(0),                                                     // 34 other2_chi_pass (browser不可のためゼロ)
+            Math.min(state.lizhibang || 0, 8) / 8,                                       //  1 lizhibang
             ...(yaku_probs || new Array(21).fill(0)),                                     // 21
             tenpai_prob != null ? tenpai_prob : 0,                                        // 1
         ]);
@@ -1016,12 +1026,12 @@
                 }
 
                 // Stage 2: 手牌推定 — (1, 3, 442) バッチ推論
-                const flat_3d = new Float32Array(3 * 476);
+                const flat_3d = new Float32Array(3 * 757);
                 for (let i = 0; i < 3; i++) {
                     const feats = make_hi_features_v29(state, target_ls[i], yaku_probs_list[i], tenpai_prob_list[i]);
-                    flat_3d.set(feats, i * 476);
+                    flat_3d.set(feats, i * 757);
                 }
-                const tensor = new ort.Tensor('float32', flat_3d, [1, 3, 476]);
+                const tensor = new ort.Tensor('float32', flat_3d, [1, 3, 757]);
                 const out = await sessions.hand_inference.run({ features: tensor });
 
                 // 出力テンソルをプレイヤーごとに分割
