@@ -1,41 +1,51 @@
 """
-hand_inference_v*.ndjson の per-player 特徴量オフセット定義 (476次元)
+hand_inference_v*.ndjson の per-player 特徴量オフセット定義 (695次元)
 
 extract_features.js の make_hand_inference_sample と
 add_yaku_features.py / add_tenpai_features.py で共有する。
+
+v37変更点:
+  - discard_features(×4) を discard_tokens 別フィールドに移行 (-176次元)
+  - self/other1/other2 jikaze を追加 (+12次元)
+  - self/other1/other2 chi_called を追加 (+102次元)
+  - is_red_five フラグをトークンに追加 (42次元/トークン)
+  757次元 → 673次元固定 + discard_tokens別フィールド + 22 (yaku/tenpai) = 695次元
 """
 
-# ---- hand_inference per-player 特徴量オフセット (476次元) ----
+# ---- hand_inference per-player 固定特徴量オフセット (673次元) ----
+# ※ discard_features は discard_tokens (別フィールド) に移行済み
 
-HI_DISCARD_START  = 0    # target_discard         [0:44]    44次元
-HI_MELD_START     = 44   # target_meld            [44:82]   38次元
-HI_RIICHI         = 82   # target_riichi          [82]       1次元
-HI_SCORE_START    = 83   # score                  [83:94]   11次元
-HI_GAME_START     = 94   # game_state             [94:103]   9次元
-HI_SELF_DISC      = 103  # self_discard           [103:147] 44次元
-HI_SELF_MELD      = 147  # self_meld              [147:185] 38次元
-HI_VISIBLE        = 185  # visible_counts         [185:219] 34次元
-HI_RED_DISC_SIG   = 219  # red_discard_signal     [219:222]  3次元
-HI_RED_VIS        = 222  # red_visible            [222:225]  3次元
-HI_OTHER1_DISC    = 225  # other1_discard         [225:269] 44次元
-HI_OTHER2_DISC    = 269  # other2_discard         [269:313] 44次元
-HI_PON_PASS       = 313  # pass_pon_signal        [313:347] 34次元
-HI_WIND_START     = 347  # wind_features(target)  [347:352]  5次元
-HI_CHI_PASS       = 352  # pass_chi_signal        [352:386] 34次元
-HI_CHI_CALLED     = 386  # chi_called_tile        [386:420] 34次元
-HI_DORA_START     = 420  # dora_features          [420:454]  34次元
-HI_OTHER1_MELD    = 454  # other1_meld_features   [454:492]  38次元
-HI_OTHER2_MELD    = 492  # other2_meld_features   [492:530]  38次元
-HI_SELF_PON_PASS  = 530  # self_pon_pass_signal   [530:564]  34次元
-HI_O1_PON_PASS    = 564  # other1_pon_pass_signal [564:598]  34次元
-HI_O2_PON_PASS    = 598  # other2_pon_pass_signal [598:632]  34次元
-HI_SELF_CHI_PASS  = 632  # self_chi_pass_signal   [632:666]  34次元
-HI_O1_CHI_PASS    = 666  # other1_chi_pass_signal [666:700]  34次元
-HI_O2_CHI_PASS    = 700  # other2_chi_pass_signal [700:734]  34次元
-HI_LIZHIBANG      = 734  # lizhibang (正規化)     [734]       1次元
-HI_YAKU_START     = 735  # yaku_prob (Stage-1)    [735:756]  21次元
-HI_TENPAI         = 756  # tenpai_prob (Stage-1)  [756]       1次元
-HI_TOTAL          = 757  # 合計
+HI_MELD_START      = 0    # target_meld            [0:38]    38次元
+HI_RIICHI          = 38   # target_riichi          [38]       1次元
+HI_SCORE_START     = 39   # score                  [39:50]   11次元
+HI_GAME_START      = 50   # game_state             [50:59]    9次元
+HI_SELF_MELD       = 59   # self_meld              [59:97]   38次元
+HI_VISIBLE         = 97   # visible_counts         [97:131]  34次元
+HI_RED_DISC_SIG    = 131  # red_discard_signal     [131:134]  3次元
+HI_RED_VIS         = 134  # red_visible            [134:137]  3次元
+HI_PON_PASS        = 137  # pass_pon_signal(target)[137:171] 34次元
+HI_WIND_START      = 171  # wind_features(target)  [171:176]  5次元
+HI_CHI_PASS        = 176  # pass_chi_signal(target)[176:210] 34次元
+HI_CHI_CALLED      = 210  # chi_called_tile(target)[210:244] 34次元
+HI_DORA_START      = 244  # dora_features          [244:278] 34次元
+HI_OTHER1_MELD     = 278  # other1_meld_features   [278:316] 38次元
+HI_OTHER2_MELD     = 316  # other2_meld_features   [316:354] 38次元
+HI_SELF_PON_PASS   = 354  # self_pon_pass_signal   [354:388] 34次元
+HI_O1_PON_PASS     = 388  # other1_pon_pass_signal [388:422] 34次元
+HI_O2_PON_PASS     = 422  # other2_pon_pass_signal [422:456] 34次元
+HI_SELF_CHI_PASS   = 456  # self_chi_pass_signal   [456:490] 34次元
+HI_O1_CHI_PASS     = 490  # other1_chi_pass_signal [490:524] 34次元
+HI_O2_CHI_PASS     = 524  # other2_chi_pass_signal [524:558] 34次元
+HI_LIZHIBANG       = 558  # lizhibang              [558]      1次元
+HI_SELF_JIKAZE     = 559  # self_jikaze            [559:563]  4次元
+HI_O1_JIKAZE       = 563  # other1_jikaze          [563:567]  4次元
+HI_O2_JIKAZE       = 567  # other2_jikaze          [567:571]  4次元
+HI_SELF_CHI_CALLED = 571  # self_chi_called        [571:605] 34次元
+HI_O1_CHI_CALLED   = 605  # other1_chi_called      [605:639] 34次元
+HI_O2_CHI_CALLED   = 639  # other2_chi_called      [639:673] 34次元
+HI_YAKU_START      = 673  # yaku_prob              [673:694] 21次元
+HI_TENPAI          = 694  # tenpai_prob            [694]      1次元
+HI_TOTAL           = 695  # 合計
 
 # ---- 各ブロックの長さ ----
 
@@ -48,29 +58,36 @@ HI_PON_DIM    = 34
 HI_CHI_DIM    = 34
 HI_YAKU_DIM   = 21
 
+# ---- 捨て牌トークン形式 (42次元/トークン) ----
+# tile_onehot(34) + turn_norm(1) + is_tsumogiri(1) + is_riichi_decl(1) + is_red_five(1) + player_role(4)
+# player_role: [is_target, is_self, is_other1, is_other2]
+HI_TOKEN_DIM = 42
+HI_TOKEN_MAX = 72   # 最大トークン数 (4プレイヤー × 18巡)
+
 # ---- Stage-1 モデル入力フォーマット (108次元) ----
 #
 # tenpai_inference / yaku_inference は make_tenpai_sample / make_yaku_sample で
 # 学習されており、入力フォーマットは:
 #   discard(44) + meld(38) + riichi(1) + game_state(9) + score(11) + wind(5) = 108
 #
-# hand_inference features では score と game_state の順序が逆で、
-# wind は [347:352] にある。そのまま先頭 108次元を切り出すと次元ズレが起きる。
+# hand_inference の固定特徴量には discard_features が含まれないため、
+# target_discard (別フィールド) を引数として別途渡す必要がある。
 
 STAGE1_INPUT_DIM = 108
 
 
-def build_stage1_input(feat: list) -> list:
-    """hand_inference 特徴量 (757次元リスト) から Stage-1 モデル用 108次元入力を構築する。
+def build_stage1_input(feat: list, target_discard: list) -> list:
+    """hand_inference 固定特徴量 (695次元) と target_discard (44次元) から Stage-1 モデル用 108次元入力を構築する。
 
     score と game_state の順序を修正し、wind を正しい位置から取得する。
     """
     assert len(feat) >= HI_TOTAL, f"特徴量次元不足: {len(feat)} < {HI_TOTAL}"
+    assert len(target_discard) == 44, f"target_discard次元不足: {len(target_discard)} != 44"
     return (
-        feat[HI_DISCARD_START : HI_MELD_START]              # discard  (44)
-        + feat[HI_MELD_START  : HI_RIICHI]                  # meld     (38)
-        + [feat[HI_RIICHI]]                                  # riichi   ( 1)
-        + feat[HI_GAME_START  : HI_GAME_START + HI_GAME_DIM]  # game_state (9) ← 94:103
-        + feat[HI_SCORE_START : HI_SCORE_START + HI_SCORE_DIM] # score    (11) ← 83:94
-        + feat[HI_WIND_START  : HI_WIND_START + HI_WIND_DIM]  # wind      (5) ← 347:352
+        target_discard                                                  # discard  (44)
+        + feat[HI_MELD_START : HI_RIICHI]                             # meld     (38)
+        + [feat[HI_RIICHI]]                                            # riichi   ( 1)
+        + feat[HI_GAME_START : HI_GAME_START + HI_GAME_DIM]           # game     ( 9)
+        + feat[HI_SCORE_START : HI_SCORE_START + HI_SCORE_DIM]        # score    (11)
+        + feat[HI_WIND_START  : HI_WIND_START  + HI_WIND_DIM]         # wind     ( 5)
     )

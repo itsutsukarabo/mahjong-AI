@@ -101,7 +101,7 @@ def main():
         for start in range(0, len(all_data), BATCH_SIZE):
             batch = all_data[start:start + BATCH_SIZE]
             x = torch.tensor(
-                [build_stage1_input(s["features"]) for s in batch],
+                [build_stage1_input(s["features"], s["target_discard"]) for s in batch],
                 dtype=torch.float32,
             )
             with torch.no_grad():

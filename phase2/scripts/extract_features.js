@@ -193,6 +193,60 @@ function wind_features(rec, player_l) {
 }
 
 /**
+ * 自風 one-hot のみ（4次元）。場風は wind_features(target) で共有されるため省略。
+ */
+function jikaze_onehot(rec, player_l) {
+    const oh = [0, 0, 0, 0];
+    oh[(player_l - rec.jushu + 4) % 4] = 1;
+    return oh;
+}
+
+/**
+ * 全プレイヤーの捨て牌を順序付きトークン列に変換する（42次元/トークン）
+ *
+ * トークン構造:
+ *   tile_onehot(34) + turn_norm(1) + is_tsumogiri(1) + is_riichi_decl(1) + is_red_five(1) + player_role(4)
+ *
+ * player_role: [is_target, is_self, is_other1, is_other2]
+ * 最大トークン数: 4プレイヤー × 18巡 = 72
+ */
+const DISCARD_TOKEN_DIM = 42;
+const MAX_DISCARD_TURNS = 18;
+
+function build_discard_tokens(rec, target_l, other_ls) {
+    const tokens = [];
+    const players = [
+        { l: target_l,    role: [1, 0, 0, 0] },
+        { l: rec.l,       role: [0, 1, 0, 0] },
+        { l: other_ls[0], role: [0, 0, 1, 0] },
+        { l: other_ls[1], role: [0, 0, 0, 1] },
+    ];
+    for (const { l, role } of players) {
+        const discards = rec.discards_l[l] || [];
+        for (let t = 0; t < discards.length; t++) {
+            const p = discards[t];
+            const base = p.replace(/[_*+=\-]/g, '');
+            const n_digit = parseInt(base[1]);
+            const is_red        = (n_digit === 0) ? 1 : 0;
+            const is_tsumogiri  = p.includes('_') ? 1 : 0;
+            const is_riichi_decl = p.includes('*') ? 1 : 0;
+            const pi = pai_to_idx(base);
+            const tile_oh = new Array(N_PAI).fill(0);
+            if (pi >= 0) tile_oh[pi] = 1;
+            tokens.push([
+                ...tile_oh,
+                (t + 1) / MAX_DISCARD_TURNS,
+                is_tsumogiri,
+                is_riichi_decl,
+                is_red,
+                ...role,
+            ]);
+        }
+    }
+    return tokens;
+}
+
+/**
  * 残り牌数・リーチ状況から特徴量ベクトルを生成
  * サイズ: 1(残り) + 4(リーチ有無) + 4(リーチなら捨て牌枚数) = 9
  */
@@ -506,17 +560,22 @@ function others_meld_type_features(rec) {
 // ---- 3モデル用の特徴量・ラベル生成 ----
 
 /**
- * 手牌類推モデル用 (v22: flat 420次元 ※学習時は add_yaku/tenpai で442次元になる)
+ * 手牌類推モデル用 (v37: 固定特徴量673次元 + discard_tokens別フィールド)
  * 視点プレイヤー l から見た 対象プレイヤー target_l の特徴量 + ラベル
  *
- * target_discard(44) + target_meld(38) + riichi(1) + score(11) + game(9) +
- * self_discard(44) + self_meld(38) + visible_counts(34) + red_discard_signal(3) +
- * red_visible(3) + other1_discard(44) + other2_discard(44) + pass_pon_signal(34) + wind(5) = 352次元
- * + pass_chi_signal(34) + chi_called_tile_signal(34) + dora_features(34) = 454次元
- * + other1_meld(38) + other2_meld(38) = 530次元
- * + self_pon_pass(34) + other1_pon_pass(34) + other2_pon_pass(34) = 632次元
- * + self_chi_pass(34) + other1_chi_pass(34) + other2_chi_pass(34) = 734次元
- * + lizhibang(1) = 735次元
+ * 固定特徴量 (673次元):
+ *   target_meld(38) + riichi(1) + score(11) + game(9) +
+ *   self_meld(38) + visible_counts(34) + red_discard_sig(3) + red_visible(3) +
+ *   pass_pon(target,34) + wind(target,5) + pass_chi(target,34) + chi_called(target,34) +
+ *   dora(34) + other1_meld(38) + other2_meld(38) +
+ *   self_pon(34) + o1_pon(34) + o2_pon(34) +
+ *   self_chi(34) + o1_chi(34) + o2_chi(34) + lizhibang(1) +
+ *   self_jikaze(4) + o1_jikaze(4) + o2_jikaze(4) +
+ *   self_chi_called(34) + o1_chi_called(34) + o2_chi_called(34)
+ *   = 673次元 (+ add_yaku 21 + add_tenpai 1 = 695次元)
+ *
+ * discard_tokens: 全4プレイヤーの捨て牌を42次元トークン×N列 (別フィールド)
+ * target_discard: target捨て牌集計(44次元) → Stage-1 モデル互換用 (別フィールド)
  */
 function make_hand_inference_sample(rec, target_l) {
     // viewer でも target でもない2プレイヤーを相対順で取得
@@ -525,21 +584,17 @@ function make_hand_inference_sample(rec, target_l) {
         .filter(l => l !== target_l);  // 必ず2要素
 
     const features = [
-        ...discard_features(rec.discards_l[target_l]),  // 44
         ...meld_features(rec.melds_l[target_l]),         // 38
-        riichi_l_val(rec.riichi_l[target_l]),            // 1
+        riichi_l_val(rec.riichi_l[target_l]),            //  1
         ...score_features(rec),                          // 11
-        ...game_state_features(rec),                     // 9
-        ...discard_features(rec.discards_l[rec.l]),      // 44
+        ...game_state_features(rec),                     //  9
         ...meld_features(rec.melds_l[rec.l]),            // 38
         ...visible_counts_vec(rec, rec.l),               // 34
-        ...red_discard_signal(rec.discards_l[target_l], rec.riichi_l[target_l]),  // 3
-        ...red_visible_flags(rec.discards_l, rec.melds_l),                       // 3
-        ...discard_features(rec.discards_l[other_ls[0]]),  // 44
-        ...discard_features(rec.discards_l[other_ls[1]]),  // 44
+        ...red_discard_signal(rec.discards_l[target_l], rec.riichi_l[target_l]),  //  3
+        ...red_visible_flags(rec.discards_l, rec.melds_l),                        //  3
         ...pass_pon_signal(rec.pon_passes_l?.[target_l]),          // 34
-        ...wind_features(rec, target_l),                           // 5
-        ...pass_chi_signal(rec.chi_passes_l?.[target_l]),          // 34  ← NEW
+        ...wind_features(rec, target_l),                           //  5
+        ...pass_chi_signal(rec.chi_passes_l?.[target_l]),          // 34
         ...chi_called_tile_signal(rec.melds_l?.[target_l]),        // 34
         ...dora_features(rec.baopai),                              // 34
         ...meld_features(rec.melds_l[other_ls[0]]),                // 38 other1_meld
@@ -551,7 +606,16 @@ function make_hand_inference_sample(rec, target_l) {
         ...pass_chi_signal(rec.chi_passes_l?.[other_ls[0]]),       // 34 other1_chi_pass
         ...pass_chi_signal(rec.chi_passes_l?.[other_ls[1]]),       // 34 other2_chi_pass
         Math.min(rec.lizhibang || 0, 8) / 8,                       //  1 lizhibang
-    ];  // 735次元 (+ add_yaku 21 + add_tenpai 1 = 757次元)
+        ...jikaze_onehot(rec, rec.l),                              //  4 self_jikaze
+        ...jikaze_onehot(rec, other_ls[0]),                        //  4 other1_jikaze
+        ...jikaze_onehot(rec, other_ls[1]),                        //  4 other2_jikaze
+        ...chi_called_tile_signal(rec.melds_l?.[rec.l]),           // 34 self_chi_called
+        ...chi_called_tile_signal(rec.melds_l?.[other_ls[0]]),     // 34 other1_chi_called
+        ...chi_called_tile_signal(rec.melds_l?.[other_ls[1]]),     // 34 other2_chi_called
+    ];  // 673次元 (+ add_yaku 21 + add_tenpai 1 = 695次元)
+
+    const discard_tokens = build_discard_tokens(rec, target_l, other_ls);
+    const target_discard = discard_features(rec.discards_l[target_l]);  // Stage-1互換用
 
     const { counts: hand_vec_target, red: red_target } = encode_hand_red(rec.hands_l[target_l]);
 
@@ -559,7 +623,7 @@ function make_hand_inference_sample(rec, target_l) {
         ? compute_block_labels(Majiang.Shoupai.fromString(rec.hands_l[target_l]))
         : null;
 
-    return { features, label_hand: hand_vec_target, label_red: red_target, label_block, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
+    return { features, discard_tokens, target_discard, label_hand: hand_vec_target, label_red: red_target, label_block, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
 }
 
 /**
