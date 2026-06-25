@@ -205,34 +205,27 @@ function parse_round(paipu_id, paipu, round_idx, board) {
             discards_l[val.l].push(val.p);
             if (val.p.endsWith('*')) riichi_l[val.l] = true;
 
-            // ポンスルー検出: 他家が2枚以上持ちなのにポンしなかったケース
+            // ポンスルー検出: 鳴かなかった観測事実のみ記録（手牌内容は不問）
             const tile_norm = normalize_tile(val.p);
             const next_ev   = round_log[event_idx + 1];
             const ponner_l  = (next_ev?.fulou && is_pon_of(next_ev.fulou.m, tile_norm))
                 ? next_ev.fulou.l : -1;
 
             for (let l = 0; l < 4; l++) {
-                if (l === val.l)       continue;
-                if (riichi_l[l])       continue;
-                if (!board.shoupai[l]) continue;
-                if (count_tile_in_shoupai(board.shoupai[l], tile_norm) >= 2) {
-                    if (l !== ponner_l) {
-                        pon_passes_l[l].push({ p: tile_norm, t: total_discards });
-                    }
+                if (l === val.l)  continue;
+                if (riichi_l[l])  continue;
+                if (l !== ponner_l) {
+                    pon_passes_l[l].push({ p: tile_norm, t: total_discards });
                 }
             }
 
-            // チースルー検出: 上家 (val.l+1)%4 のみがチー可能
+            // チースルー検出: 上家がチーせず自分のツモ番に進んだ場合のみ記録
             const chi_caller_l = (val.l + 1) % 4;
-            if (
-                !riichi_l[chi_caller_l] &&
-                board.shoupai[chi_caller_l] &&
-                can_chi(board.shoupai[chi_caller_l], tile_norm)
-            ) {
-                const is_chi = next_ev?.fulou
-                    && is_chi_of(next_ev.fulou.m, tile_norm)
-                    && next_ev.fulou.l === chi_caller_l;
-                if (!is_chi) {
+            if (!riichi_l[chi_caller_l]) {
+                const next_key = next_ev ? Object.keys(next_ev)[0] : null;
+                const is_tsumo_for_caller = (next_key === 'zimo' || next_key === 'gangzimo')
+                    && next_ev[next_key].l === chi_caller_l;
+                if (is_tsumo_for_caller) {
                     chi_passes_l[chi_caller_l].push({ p: tile_norm, t: total_discards });
                 }
             }

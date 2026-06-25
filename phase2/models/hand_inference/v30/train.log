@@ -1,0 +1,41 @@
+device: cuda  resume: True
+読み込み中: /mnt/c/Users/tetsu-4no/mahjong-AI/phase2/data/features/hand_inference_v26.ndjson
+総サンプル数: 205696
+  50000/205696
+  100000/205696
+  150000/205696
+  200000/205696
+/home/tetsu-4no/miniconda3/envs/mahjong/lib/python3.11/site-packages/torch/nn/modules/transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+pos_rate=0.0240  pos_weight=10.00
+ノイズ除外: 0 → 205696
+train: 164556, val: 20569, test: 20571
+resume: epoch 21  best_val_eae=5.9253  best_wait_f1=0.1742  baseline=0.4180
+epoch  21  nll=0.2570  val_eae=6.1839  val_acc=0.8494  lam=0.0500  reward=0.949  baseline=0.423
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  22  nll=0.2585  val_eae=6.1378  val_acc=0.8499  lam=0.0500  reward=0.948  baseline=0.429
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  23  nll=0.2594  val_eae=6.1579  val_acc=0.8501  lam=0.0500  reward=0.948  baseline=0.434
+  [thermal] GPU 84C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  24  nll=0.2589  val_eae=6.2692  val_acc=0.8495  lam=0.0500  reward=0.948  baseline=0.439
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  wait_f1=0.1731  prec=0.1494  recall=0.2520
+epoch  25  nll=0.2588  val_eae=6.1875  val_acc=0.8500  lam=0.0500  reward=0.949  baseline=0.444
+epoch  26  nll=0.2588  val_eae=6.2198  val_acc=0.8500  lam=0.0500  reward=0.949  baseline=0.449
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+early stopping
+
+test_eae=5.8871  test_acc=0.8539
+wait_f1=0.1599  prec=0.1498  recall=0.2100
+
+ONNX保存: /mnt/c/Users/tetsu-4no/mahjong-AI/phase2/models/hand_inference/v30/model.onnx

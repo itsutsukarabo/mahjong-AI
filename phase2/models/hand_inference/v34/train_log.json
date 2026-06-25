@@ -1,0 +1,16 @@
+{"epoch": 1, "train_nll": 0.2339, "val_eae": 5.7103, "val_acc": 0.8573, "wait_f1": 0.4749, "wait_prec": 0.3662, "wait_recall": 0.8492, "wait_hit_rate": 0.8666, "wait_top1_acc": 0.636, "n_tenpai": 5195}
+{"epoch": 2, "train_nll": 0.2344, "val_eae": 5.7168, "val_acc": 0.8573, "wait_f1": 0.471, "wait_prec": 0.361, "wait_recall": 0.8522, "wait_hit_rate": 0.8703, "wait_top1_acc": 0.6323, "n_tenpai": 5195}
+{"epoch": 3, "train_nll": 0.2349, "val_eae": 5.7283, "val_acc": 0.8572, "wait_f1": 0.4675, "wait_prec": 0.3566, "wait_recall": 0.8556, "wait_hit_rate": 0.8718, "wait_top1_acc": 0.6364, "n_tenpai": 5195}
+{"epoch": 4, "train_nll": 0.2358, "val_eae": 5.7494, "val_acc": 0.8571, "wait_f1": 0.4715, "wait_prec": 0.3606, "wait_recall": 0.8542, "wait_hit_rate": 0.8706, "wait_top1_acc": 0.6339, "n_tenpai": 5195}
+{"epoch": 5, "train_nll": 0.2366, "val_eae": 5.7262, "val_acc": 0.8568, "wait_f1": 0.4647, "wait_prec": 0.3541, "wait_recall": 0.8505, "wait_hit_rate": 0.8687, "wait_top1_acc": 0.6277, "n_tenpai": 5195}
+{"epoch": 6, "train_nll": 0.2372, "val_eae": 5.775, "val_acc": 0.8567, "wait_f1": 0.461, "wait_prec": 0.3495, "wait_recall": 0.8536, "wait_hit_rate": 0.8714, "wait_top1_acc": 0.6264, "n_tenpai": 5195}
+{"epoch": 7, "train_nll": 0.2381, "val_eae": 5.7833, "val_acc": 0.8564, "wait_f1": 0.4556, "wait_prec": 0.3425, "wait_recall": 0.8547, "wait_hit_rate": 0.8716, "wait_top1_acc": 0.621, "n_tenpai": 5195}
+{"epoch": 8, "train_nll": 0.2386, "val_eae": 5.8153, "val_acc": 0.8562, "wait_f1": 0.4574, "wait_prec": 0.3457, "wait_recall": 0.8469, "wait_hit_rate": 0.8645, "wait_top1_acc": 0.6246, "n_tenpai": 5195}
+{"epoch": 9, "train_nll": 0.238, "val_eae": 5.7573, "val_acc": 0.8565, "wait_f1": 0.4631, "wait_prec": 0.3521, "wait_recall": 0.8491, "wait_hit_rate": 0.8666, "wait_top1_acc": 0.6254, "n_tenpai": 5195}
+{"epoch": 10, "train_nll": 0.2376, "val_eae": 5.766, "val_acc": 0.8566, "wait_f1": 0.4621, "wait_prec": 0.3506, "wait_recall": 0.8492, "wait_hit_rate": 0.8666, "wait_top1_acc": 0.6239, "n_tenpai": 5195}
+{"epoch": 11, "train_nll": 0.2376, "val_eae": 5.7531, "val_acc": 0.8566, "wait_f1": 0.4602, "wait_prec": 0.3487, "wait_recall": 0.8501, "wait_hit_rate": 0.8672, "wait_top1_acc": 0.6262, "n_tenpai": 5195}
+{"epoch": 12, "train_nll": 0.2373, "val_eae": 5.7764, "val_acc": 0.8565, "wait_f1": 0.4606, "wait_prec": 0.3488, "wait_recall": 0.8494, "wait_hit_rate": 0.8662, "wait_top1_acc": 0.6262, "n_tenpai": 5195}
+{"epoch": 13, "train_nll": 0.2374, "val_eae": 5.751, "val_acc": 0.8566, "wait_f1": 0.4596, "wait_prec": 0.3478, "wait_recall": 0.8499, "wait_hit_rate": 0.8672, "wait_top1_acc": 0.6268, "n_tenpai": 5195}
+{"epoch": 14, "train_nll": 0.2374, "val_eae": 5.7561, "val_acc": 0.8566, "wait_f1": 0.4596, "wait_prec": 0.3481, "wait_recall": 0.8494, "wait_hit_rate": 0.8664, "wait_top1_acc": 0.6239, "n_tenpai": 5195}
+{"epoch": 15, "train_nll": 0.2375, "val_eae": 5.7624, "val_acc": 0.8566, "wait_f1": 0.4591, "wait_prec": 0.3476, "wait_recall": 0.8497, "wait_hit_rate": 0.867, "wait_top1_acc": 0.6235, "n_tenpai": 5195}
+{"epoch": 16, "train_nll": 0.2373, "val_eae": 5.7704, "val_acc": 0.8565, "wait_f1": 0.4588, "wait_prec": 0.3471, "wait_recall": 0.8503, "wait_hit_rate": 0.8679, "wait_top1_acc": 0.6244, "n_tenpai": 5195}

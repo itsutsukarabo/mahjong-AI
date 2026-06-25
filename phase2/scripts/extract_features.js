@@ -202,48 +202,85 @@ function jikaze_onehot(rec, player_l) {
 }
 
 /**
- * 全プレイヤーの捨て牌を順序付きトークン列に変換する（42次元/トークン）
+ * 捨て牌＋パスイベントを時系列順トークン列に変換する（44次元/トークン）
  *
  * トークン構造:
- *   tile_onehot(34) + turn_norm(1) + is_tsumogiri(1) + is_riichi_decl(1) + is_red_five(1) + player_role(4)
+ *   tile_onehot(34) + turn_norm(1) + is_tsumogiri(1) + is_riichi_decl(1) + is_red_five(1)
+ *   + player_role(4) + event_is_pass_pon(1) + event_is_pass_chi(1)
  *
  * player_role: [is_target, is_self, is_other1, is_other2]
- * 最大トークン数: 4プレイヤー × 18巡 = 72
+ * event: DISCARD=[0,0], PASS_PON=[1,0], PASS_CHI=[0,1]
+ *
+ * ・DISCARD: 全4プレイヤーの捨て牌（全員分）
+ * ・PASS_PON/PASS_CHI: target_l 自身のパスイベントのみ
+ * ・全イベントをグローバル巡数でソートして時系列順に結合
+ * 最大トークン数: ~144 (捨て牌72 + PASSイベント~72)
  */
-const DISCARD_TOKEN_DIM = 42;
-const MAX_DISCARD_TURNS = 18;
+const EVENT_TOKEN_DIM = 44;
+const MAX_GLOBAL_TURNS = 70;  // total_discards の最大値（pass t 値の正規化基準）
 
-function build_discard_tokens(rec, target_l, other_ls) {
-    const tokens = [];
-    const players = [
-        { l: target_l,    role: [1, 0, 0, 0] },
-        { l: rec.l,       role: [0, 1, 0, 0] },
-        { l: other_ls[0], role: [0, 0, 1, 0] },
-        { l: other_ls[1], role: [0, 0, 0, 1] },
-    ];
-    for (const { l, role } of players) {
+function build_event_tokens(rec, target_l, other_ls) {
+    const events = [];  // { t_key: number, token: number[] }
+
+    const dealer   = rec.jushu % 4;
+    const role_map = {
+        [target_l]:    [1, 0, 0, 0],
+        [rec.l]:       [0, 1, 0, 0],
+        [other_ls[0]]: [0, 0, 1, 0],
+        [other_ls[1]]: [0, 0, 0, 1],
+    };
+
+    // --- DISCARD events (全4プレイヤー) ---
+    for (const l of [target_l, rec.l, other_ls[0], other_ls[1]]) {
+        const role     = role_map[l];
+        const seat_off = (l - dealer + 4) % 4;
         const discards = rec.discards_l[l] || [];
-        for (let t = 0; t < discards.length; t++) {
-            const p = discards[t];
+        for (let i = 0; i < discards.length; i++) {
+            const p = discards[i];
             const base = p.replace(/[_*+=\-]/g, '');
-            const n_digit = parseInt(base[1]);
+            const n_digit       = parseInt(base[1]);
             const is_red        = (n_digit === 0) ? 1 : 0;
             const is_tsumogiri  = p.includes('_') ? 1 : 0;
             const is_riichi_decl = p.includes('*') ? 1 : 0;
             const pi = pai_to_idx(base);
             const tile_oh = new Array(N_PAI).fill(0);
             if (pi >= 0) tile_oh[pi] = 1;
-            tokens.push([
-                ...tile_oh,
-                (t + 1) / MAX_DISCARD_TURNS,
-                is_tsumogiri,
-                is_riichi_decl,
-                is_red,
-                ...role,
-            ]);
+            const t_key = 4 * i + seat_off;
+            events.push({
+                t_key,
+                token: [...tile_oh, t_key / MAX_GLOBAL_TURNS, is_tsumogiri, is_riichi_decl, is_red, ...role, 0, 0],
+            });
         }
     }
-    return tokens;
+
+    // --- PASS_PON events (target_l のみ) ---
+    const target_role = [1, 0, 0, 0];
+    for (const { p, t } of (rec.pon_passes_l?.[target_l] || [])) {
+        const pi = pai_to_idx(p);
+        const tile_oh = new Array(N_PAI).fill(0);
+        if (pi >= 0) tile_oh[pi] = 1;
+        const is_red = (parseInt(p[1]) === 0) ? 1 : 0;
+        events.push({
+            t_key: t,
+            token: [...tile_oh, t / MAX_GLOBAL_TURNS, 0, 0, is_red, ...target_role, 1, 0],
+        });
+    }
+
+    // --- PASS_CHI events (target_l のみ) ---
+    for (const { p, t } of (rec.chi_passes_l?.[target_l] || [])) {
+        const pi = pai_to_idx(p);
+        const tile_oh = new Array(N_PAI).fill(0);
+        if (pi >= 0) tile_oh[pi] = 1;
+        const is_red = (parseInt(p[1]) === 0) ? 1 : 0;
+        events.push({
+            t_key: t,
+            token: [...tile_oh, t / MAX_GLOBAL_TURNS, 0, 0, is_red, ...target_role, 0, 1],
+        });
+    }
+
+    // グローバル巡数でソートして時系列順に結合
+    events.sort((a, b) => a.t_key - b.t_key);
+    return events.map(e => e.token);
 }
 
 /**
@@ -560,7 +597,7 @@ function others_meld_type_features(rec) {
 // ---- 3モデル用の特徴量・ラベル生成 ----
 
 /**
- * 手牌類推モデル用 (v37: 固定特徴量673次元 + discard_tokens別フィールド)
+ * 手牌類推モデル用 (v38: 固定特徴量673次元 + event_tokens別フィールド(44次元/トークン))
  * 視点プレイヤー l から見た 対象プレイヤー target_l の特徴量 + ラベル
  *
  * 固定特徴量 (673次元):
@@ -614,7 +651,7 @@ function make_hand_inference_sample(rec, target_l) {
         ...chi_called_tile_signal(rec.melds_l?.[other_ls[1]]),     // 34 other2_chi_called
     ];  // 673次元 (+ add_yaku 21 + add_tenpai 1 = 695次元)
 
-    const discard_tokens = build_discard_tokens(rec, target_l, other_ls);
+    const discard_tokens = build_event_tokens(rec, target_l, other_ls);
     const target_discard = discard_features(rec.discards_l[target_l]);  // Stage-1互換用
 
     const { counts: hand_vec_target, red: red_target } = encode_hand_red(rec.hands_l[target_l]);

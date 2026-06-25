@@ -77,11 +77,8 @@ def process():
 
             for p in range(3):
                 counts34 = label_hand[p]
-                feat_p   = s["features"][p]
-                n_chi = round(feat_p[78] * 4)
-                n_pon = round(feat_p[79] * 4)
-                n_kan = round(feat_p[80] * 4)
-                n_meld = n_chi + n_pon + n_kan
+                # n_meld を手牌枚数から計算: (13 - 手牌枚数) / 3
+                n_meld = (13 - int(sum(counts34))) // 3
 
                 if USE_V2:
                     soft, sh = compute_soft_labels_v2(

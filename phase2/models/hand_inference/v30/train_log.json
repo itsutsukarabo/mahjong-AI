@@ -1,0 +1,26 @@
+{"epoch": 1, "train_nll": 0.2582, "val_eae": 6.1824, "val_acc": 0.8494, "lam_rf": 0.001, "rf_loss": 1.6117, "mean_reward": 0.9486, "baseline": 0.3065}
+{"epoch": 2, "train_nll": 0.2595, "val_eae": 6.2395, "val_acc": 0.849, "lam_rf": 0.001, "rf_loss": 1.5714, "mean_reward": 0.9485, "baseline": 0.3129}
+{"epoch": 3, "train_nll": 0.2599, "val_eae": 6.2605, "val_acc": 0.8492, "lam_rf": 0.001, "rf_loss": 1.5489, "mean_reward": 0.9482, "baseline": 0.3193}
+{"epoch": 4, "train_nll": 0.2593, "val_eae": 6.2647, "val_acc": 0.849, "lam_rf": 0.001, "rf_loss": 1.5278, "mean_reward": 0.9484, "baseline": 0.3256}
+{"epoch": 5, "train_nll": 0.2596, "val_eae": 6.1988, "val_acc": 0.8496, "lam_rf": 0.001, "rf_loss": 1.5024, "mean_reward": 0.948, "baseline": 0.3318, "wait_prec": 0.1324, "wait_recall": 0.1629, "wait_f1": 0.1331}
+{"epoch": 6, "train_nll": 0.2533, "val_eae": 6.0855, "val_acc": 0.8513, "lam_rf": 0.01, "rf_loss": 1.435, "mean_reward": 0.9479, "baseline": 0.3379}
+{"epoch": 7, "train_nll": 0.2509, "val_eae": 6.0427, "val_acc": 0.8517, "lam_rf": 0.01, "rf_loss": 1.4104, "mean_reward": 0.9481, "baseline": 0.344}
+{"epoch": 8, "train_nll": 0.2497, "val_eae": 6.0265, "val_acc": 0.852, "lam_rf": 0.01, "rf_loss": 1.3837, "mean_reward": 0.9476, "baseline": 0.3501}
+{"epoch": 9, "train_nll": 0.249, "val_eae": 6.0273, "val_acc": 0.852, "lam_rf": 0.01, "rf_loss": 1.3672, "mean_reward": 0.9478, "baseline": 0.3561}
+{"epoch": 10, "train_nll": 0.2485, "val_eae": 5.9967, "val_acc": 0.8524, "lam_rf": 0.01, "rf_loss": 1.3494, "mean_reward": 0.9478, "baseline": 0.362, "wait_prec": 0.1588, "wait_recall": 0.2364, "wait_f1": 0.1742}
+{"epoch": 11, "train_nll": 0.2482, "val_eae": 5.962, "val_acc": 0.8526, "lam_rf": 0.01, "rf_loss": 1.3332, "mean_reward": 0.9476, "baseline": 0.3678}
+{"epoch": 12, "train_nll": 0.2477, "val_eae": 6.0013, "val_acc": 0.8524, "lam_rf": 0.01, "rf_loss": 1.3209, "mean_reward": 0.9485, "baseline": 0.3736}
+{"epoch": 13, "train_nll": 0.2475, "val_eae": 5.9742, "val_acc": 0.8526, "lam_rf": 0.01, "rf_loss": 1.3054, "mean_reward": 0.9486, "baseline": 0.3794}
+{"epoch": 14, "train_nll": 0.2474, "val_eae": 5.9713, "val_acc": 0.8527, "lam_rf": 0.01, "rf_loss": 1.2872, "mean_reward": 0.9483, "baseline": 0.3851}
+{"epoch": 15, "train_nll": 0.2469, "val_eae": 5.9434, "val_acc": 0.8529, "lam_rf": 0.01, "rf_loss": 1.2749, "mean_reward": 0.9483, "baseline": 0.3907, "wait_prec": 0.1562, "wait_recall": 0.2277, "wait_f1": 0.1701}
+{"epoch": 16, "train_nll": 0.2468, "val_eae": 5.9253, "val_acc": 0.8531, "lam_rf": 0.01, "rf_loss": 1.2604, "mean_reward": 0.9478, "baseline": 0.3963}
+{"epoch": 17, "train_nll": 0.2467, "val_eae": 5.9407, "val_acc": 0.8531, "lam_rf": 0.01, "rf_loss": 1.247, "mean_reward": 0.948, "baseline": 0.4018}
+{"epoch": 18, "train_nll": 0.2462, "val_eae": 5.9646, "val_acc": 0.8529, "lam_rf": 0.01, "rf_loss": 1.2353, "mean_reward": 0.9481, "baseline": 0.4073}
+{"epoch": 19, "train_nll": 0.2459, "val_eae": 5.9501, "val_acc": 0.8531, "lam_rf": 0.01, "rf_loss": 1.2208, "mean_reward": 0.9482, "baseline": 0.4127}
+{"epoch": 20, "train_nll": 0.2459, "val_eae": 5.9459, "val_acc": 0.8532, "lam_rf": 0.01, "rf_loss": 1.2096, "mean_reward": 0.9484, "baseline": 0.418, "wait_prec": 0.1461, "wait_recall": 0.198, "wait_f1": 0.1538}
+{"epoch": 21, "train_nll": 0.257, "val_eae": 6.1839, "val_acc": 0.8494, "lam_rf": 0.05, "rf_loss": 1.1857, "mean_reward": 0.949, "baseline": 0.4233}
+{"epoch": 22, "train_nll": 0.2585, "val_eae": 6.1378, "val_acc": 0.8499, "lam_rf": 0.05, "rf_loss": 1.1557, "mean_reward": 0.9485, "baseline": 0.4286}
+{"epoch": 23, "train_nll": 0.2594, "val_eae": 6.1579, "val_acc": 0.8501, "lam_rf": 0.05, "rf_loss": 1.1405, "mean_reward": 0.9484, "baseline": 0.4338}
+{"epoch": 24, "train_nll": 0.2589, "val_eae": 6.2692, "val_acc": 0.8495, "lam_rf": 0.05, "rf_loss": 1.1233, "mean_reward": 0.9483, "baseline": 0.4389}
+{"epoch": 25, "train_nll": 0.2588, "val_eae": 6.1875, "val_acc": 0.85, "lam_rf": 0.05, "rf_loss": 1.1086, "mean_reward": 0.949, "baseline": 0.444, "wait_prec": 0.1494, "wait_recall": 0.252, "wait_f1": 0.1731}
+{"epoch": 26, "train_nll": 0.2588, "val_eae": 6.2198, "val_acc": 0.85, "lam_rf": 0.05, "rf_loss": 1.0997, "mean_reward": 0.9494, "baseline": 0.4491}

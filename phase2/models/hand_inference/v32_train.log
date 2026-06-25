@@ -1,0 +1,418 @@
+device: cuda  resume: False
+読み込み中: /mnt/c/Users/tetsu-4no/mahjong-AI/phase2/data/features/hand_inference_v26.ndjson
+総サンプル数: 205696
+  50000/205696
+  100000/205696
+  150000/205696
+  200000/205696
+/home/tetsu-4no/miniconda3/envs/mahjong/lib/python3.11/site-packages/torch/nn/modules/transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+block pos_rate=0.0240  pos_weight=10.00
+wait  pos_rate≈0.020  pos_weight=10.00
+ノイズ除外: 0 → 205696
+train: 164556, val: 20569, test: 20571
+v31 ロード完了  missing=5  unexpected=0
+  missing (新規初期化): ['wait_pool.weight', 'wait_head.0.weight', 'wait_head.0.bias', 'wait_head.2.weight', 'wait_head.2.bias']
+epoch   1  nll=0.2527  val_eae=6.1695  val_acc=0.8505  wait_f1=0.1896  hit=0.5721  top1=0.1994
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.1896  hit=0.5721  top1=0.1994]
+epoch   2  nll=0.2542  val_eae=6.1439  val_acc=0.8510  wait_f1=0.2449  hit=0.6968  top1=0.2706
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.2449  hit=0.6968  top1=0.2706]
+epoch   3  nll=0.2544  val_eae=6.1439  val_acc=0.8508  wait_f1=0.2700  hit=0.7715  top1=0.3507
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.2700  hit=0.7715  top1=0.3507]
+epoch   4  nll=0.2548  val_eae=6.1390  val_acc=0.8505  wait_f1=0.3122  hit=0.7867  top1=0.3950
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.3122  hit=0.7867  top1=0.3950]
+epoch   5  nll=0.2551  val_eae=6.1416  val_acc=0.8505  wait_f1=0.3343  hit=0.7942  top1=0.4308
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.3343  hit=0.7942  top1=0.4308]
+epoch   6  nll=0.2540  val_eae=6.1018  val_acc=0.8514  wait_f1=0.3450  hit=0.8164  top1=0.4566
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.3450  hit=0.8164  top1=0.4566]
+epoch   7  nll=0.2542  val_eae=6.1914  val_acc=0.8504  wait_f1=0.3499  hit=0.8314  top1=0.4745
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.3499  hit=0.8314  top1=0.4745]
+epoch   8  nll=0.2539  val_eae=6.0869  val_acc=0.8512  wait_f1=0.3645  hit=0.8408  top1=0.5047
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.3645  hit=0.8408  top1=0.5047]
+epoch   9  nll=0.2534  val_eae=6.1728  val_acc=0.8507  wait_f1=0.3761  hit=0.8352  top1=0.5088
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.3761  hit=0.8352  top1=0.5088]
+epoch  10  nll=0.2538  val_eae=6.1049  val_acc=0.8512  wait_f1=0.3787  hit=0.8522  top1=0.5282
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.3787  hit=0.8522  top1=0.5282]
+epoch  11  nll=0.2530  val_eae=6.1142  val_acc=0.8511  wait_f1=0.3925  hit=0.8433  top1=0.5292
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.3925  hit=0.8433  top1=0.5292]
+epoch  12  nll=0.2526  val_eae=6.1012  val_acc=0.8514  wait_f1=0.4018  hit=0.8472  top1=0.5474
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4018  hit=0.8472  top1=0.5474]
+epoch  13  nll=0.2520  val_eae=6.0544  val_acc=0.8521  wait_f1=0.4018  hit=0.8554  top1=0.5621
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  14  nll=0.2521  val_eae=6.0962  val_acc=0.8518  wait_f1=0.4116  hit=0.8564  top1=0.5596
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4116  hit=0.8564  top1=0.5596]
+epoch  15  nll=0.2518  val_eae=6.1750  val_acc=0.8513  wait_f1=0.4027  hit=0.8662  top1=0.5731
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  16  nll=0.2516  val_eae=6.0315  val_acc=0.8520  wait_f1=0.4242  hit=0.8601  top1=0.5767
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4242  hit=0.8601  top1=0.5767]
+epoch  17  nll=0.2508  val_eae=6.0809  val_acc=0.8518  wait_f1=0.4275  hit=0.8541  top1=0.5859
+  [thermal] GPU 80C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4275  hit=0.8541  top1=0.5859]
+epoch  18  nll=0.2511  val_eae=6.0153  val_acc=0.8527  wait_f1=0.4253  hit=0.8643  top1=0.6015
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 79C
+  [thermal] GPU 75C
+  [thermal] cool enough, resuming
+epoch  19  nll=0.2505  val_eae=6.0000  val_acc=0.8524  wait_f1=0.4284  hit=0.8631  top1=0.6010
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4284  hit=0.8631  top1=0.6010]
+epoch  20  nll=0.2499  val_eae=6.0607  val_acc=0.8524  wait_f1=0.4406  hit=0.8654  top1=0.6056
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4406  hit=0.8654  top1=0.6056]
+epoch  21  nll=0.2501  val_eae=6.0627  val_acc=0.8525  wait_f1=0.4414  hit=0.8697  top1=0.6112
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 79C
+  [thermal] GPU 75C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4414  hit=0.8697  top1=0.6112]
+epoch  22  nll=0.2497  val_eae=6.0240  val_acc=0.8526  wait_f1=0.4542  hit=0.8620  top1=0.6216
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4542  hit=0.8620  top1=0.6216]
+epoch  23  nll=0.2488  val_eae=6.0504  val_acc=0.8526  wait_f1=0.4341  hit=0.8689  top1=0.6108
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  24  nll=0.2491  val_eae=6.0118  val_acc=0.8528  wait_f1=0.4396  hit=0.8705  top1=0.6094
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  25  nll=0.2417  val_eae=5.8265  val_acc=0.8554  wait_f1=0.4720  hit=0.8695  top1=0.6345
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4720  hit=0.8695  top1=0.6345]
+epoch  26  nll=0.2384  val_eae=5.8145  val_acc=0.8559  wait_f1=0.4735  hit=0.8708  top1=0.6391
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4735  hit=0.8708  top1=0.6391]
+epoch  27  nll=0.2372  val_eae=5.7758  val_acc=0.8562  wait_f1=0.4788  hit=0.8722  top1=0.6422
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4788  hit=0.8722  top1=0.6422]
+epoch  28  nll=0.2363  val_eae=5.7595  val_acc=0.8564  wait_f1=0.4794  hit=0.8724  top1=0.6445
+  [thermal] GPU 80C > 78C - cooling...
+  [thermal] GPU 79C
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4794  hit=0.8724  top1=0.6445]
+epoch  29  nll=0.2356  val_eae=5.7378  val_acc=0.8565  wait_f1=0.4821  hit=0.8691  top1=0.6431
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4821  hit=0.8691  top1=0.6431]
+epoch  30  nll=0.2351  val_eae=5.7434  val_acc=0.8567  wait_f1=0.4819  hit=0.8697  top1=0.6474
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  31  nll=0.2347  val_eae=5.7316  val_acc=0.8569  wait_f1=0.4793  hit=0.8720  top1=0.6500
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  32  nll=0.2344  val_eae=5.7390  val_acc=0.8570  wait_f1=0.4827  hit=0.8718  top1=0.6485
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4827  hit=0.8718  top1=0.6485]
+epoch  33  nll=0.2340  val_eae=5.7100  val_acc=0.8571  wait_f1=0.4782  hit=0.8749  top1=0.6495
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  34  nll=0.2336  val_eae=5.7225  val_acc=0.8570  wait_f1=0.4804  hit=0.8724  top1=0.6535
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  35  nll=0.2333  val_eae=5.6938  val_acc=0.8572  wait_f1=0.4843  hit=0.8728  top1=0.6558
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 79C
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4843  hit=0.8728  top1=0.6558]
+epoch  36  nll=0.2333  val_eae=5.6767  val_acc=0.8573  wait_f1=0.4831  hit=0.8731  top1=0.6539
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  37  nll=0.2329  val_eae=5.6853  val_acc=0.8573  wait_f1=0.4845  hit=0.8722  top1=0.6514
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4845  hit=0.8722  top1=0.6514]
+epoch  38  nll=0.2328  val_eae=5.6882  val_acc=0.8574  wait_f1=0.4841  hit=0.8741  top1=0.6551
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 79C
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  39  nll=0.2326  val_eae=5.6770  val_acc=0.8574  wait_f1=0.4838  hit=0.8724  top1=0.6549
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  40  nll=0.2322  val_eae=5.6794  val_acc=0.8575  wait_f1=0.4876  hit=0.8724  top1=0.6599
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 76C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4876  hit=0.8724  top1=0.6599]
+epoch  41  nll=0.2321  val_eae=5.6589  val_acc=0.8576  wait_f1=0.4893  hit=0.8739  top1=0.6577
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4893  hit=0.8739  top1=0.6577]
+epoch  42  nll=0.2320  val_eae=5.6711  val_acc=0.8576  wait_f1=0.4923  hit=0.8737  top1=0.6576
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4923  hit=0.8737  top1=0.6576]
+epoch  43  nll=0.2319  val_eae=5.6491  val_acc=0.8578  wait_f1=0.4944  hit=0.8733  top1=0.6606
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4944  hit=0.8733  top1=0.6606]
+epoch  44  nll=0.2316  val_eae=5.6673  val_acc=0.8577  wait_f1=0.4917  hit=0.8745  top1=0.6597
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  45  nll=0.2317  val_eae=5.6651  val_acc=0.8578  wait_f1=0.4904  hit=0.8733  top1=0.6593
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  46  nll=0.2315  val_eae=5.6663  val_acc=0.8578  wait_f1=0.4884  hit=0.8741  top1=0.6585
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  47  nll=0.2313  val_eae=5.6624  val_acc=0.8580  wait_f1=0.4880  hit=0.8756  top1=0.6562
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  48  nll=0.2312  val_eae=5.6426  val_acc=0.8580  wait_f1=0.4933  hit=0.8730  top1=0.6606
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  49  nll=0.2310  val_eae=5.6334  val_acc=0.8581  wait_f1=0.4895  hit=0.8745  top1=0.6566
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  50  nll=0.2310  val_eae=5.6307  val_acc=0.8581  wait_f1=0.4923  hit=0.8745  top1=0.6587
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  51  nll=0.2307  val_eae=5.6507  val_acc=0.8582  wait_f1=0.4897  hit=0.8758  top1=0.6612
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  52  nll=0.2307  val_eae=5.6217  val_acc=0.8581  wait_f1=0.4966  hit=0.8716  top1=0.6603
+  [thermal] GPU 84C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4966  hit=0.8716  top1=0.6603]
+epoch  53  nll=0.2306  val_eae=5.6350  val_acc=0.8583  wait_f1=0.4916  hit=0.8737  top1=0.6599
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  54  nll=0.2303  val_eae=5.6334  val_acc=0.8583  wait_f1=0.4919  hit=0.8753  top1=0.6631
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  55  nll=0.2303  val_eae=5.6284  val_acc=0.8583  wait_f1=0.4943  hit=0.8722  top1=0.6631
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  56  nll=0.2304  val_eae=5.6326  val_acc=0.8582  wait_f1=0.4942  hit=0.8714  top1=0.6631
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  57  nll=0.2302  val_eae=5.6177  val_acc=0.8585  wait_f1=0.4988  hit=0.8739  top1=0.6645
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4988  hit=0.8739  top1=0.6645]
+epoch  58  nll=0.2301  val_eae=5.6214  val_acc=0.8585  wait_f1=0.4993  hit=0.8745  top1=0.6647
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4993  hit=0.8745  top1=0.6647]
+epoch  59  nll=0.2300  val_eae=5.6372  val_acc=0.8585  wait_f1=0.4917  hit=0.8731  top1=0.6649
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  60  nll=0.2300  val_eae=5.6170  val_acc=0.8586  wait_f1=0.4969  hit=0.8731  top1=0.6674
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  61  nll=0.2297  val_eae=5.6296  val_acc=0.8585  wait_f1=0.4991  hit=0.8731  top1=0.6666
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  62  nll=0.2297  val_eae=5.6120  val_acc=0.8586  wait_f1=0.4980  hit=0.8730  top1=0.6679
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  63  nll=0.2297  val_eae=5.5994  val_acc=0.8587  wait_f1=0.4997  hit=0.8743  top1=0.6666
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 79C
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.4997  hit=0.8743  top1=0.6666]
+epoch  64  nll=0.2295  val_eae=5.6068  val_acc=0.8587  wait_f1=0.4978  hit=0.8730  top1=0.6639
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  65  nll=0.2294  val_eae=5.6315  val_acc=0.8587  wait_f1=0.4988  hit=0.8751  top1=0.6679
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  66  nll=0.2294  val_eae=5.6133  val_acc=0.8588  wait_f1=0.5048  hit=0.8731  top1=0.6664
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.5048  hit=0.8731  top1=0.6664]
+epoch  67  nll=0.2294  val_eae=5.6285  val_acc=0.8586  wait_f1=0.4967  hit=0.8749  top1=0.6705
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  68  nll=0.2291  val_eae=5.6044  val_acc=0.8588  wait_f1=0.5056  hit=0.8728  top1=0.6712
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.5056  hit=0.8728  top1=0.6712]
+epoch  69  nll=0.2285  val_eae=5.5927  val_acc=0.8589  wait_f1=0.5054  hit=0.8731  top1=0.6706
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  70  nll=0.2282  val_eae=5.6143  val_acc=0.8587  wait_f1=0.5027  hit=0.8747  top1=0.6724
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  71  nll=0.2283  val_eae=5.5960  val_acc=0.8589  wait_f1=0.5041  hit=0.8749  top1=0.6705
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+epoch  72  nll=0.2284  val_eae=5.5915  val_acc=0.8590  wait_f1=0.5043  hit=0.8728  top1=0.6693
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  73  nll=0.2283  val_eae=5.6041  val_acc=0.8589  wait_f1=0.5024  hit=0.8733  top1=0.6703
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  74  nll=0.2282  val_eae=5.5751  val_acc=0.8590  wait_f1=0.5051  hit=0.8733  top1=0.6720
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  75  nll=0.2283  val_eae=5.5946  val_acc=0.8589  wait_f1=0.5051  hit=0.8739  top1=0.6722
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  76  nll=0.2283  val_eae=5.5760  val_acc=0.8590  wait_f1=0.5019  hit=0.8733  top1=0.6714
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  77  nll=0.2281  val_eae=5.5817  val_acc=0.8590  wait_f1=0.5050  hit=0.8720  top1=0.6741
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  78  nll=0.2280  val_eae=5.5957  val_acc=0.8589  wait_f1=0.5042  hit=0.8737  top1=0.6714
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  79  nll=0.2279  val_eae=5.6167  val_acc=0.8587  wait_f1=0.5034  hit=0.8739  top1=0.6710
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  80  nll=0.2281  val_eae=5.5837  val_acc=0.8590  wait_f1=0.5042  hit=0.8743  top1=0.6701
+  [thermal] GPU 83C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  81  nll=0.2279  val_eae=5.5796  val_acc=0.8590  wait_f1=0.5070  hit=0.8745  top1=0.6718
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 79C
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.5070  hit=0.8745  top1=0.6718]
+epoch  82  nll=0.2280  val_eae=5.5900  val_acc=0.8589  wait_f1=0.5073  hit=0.8733  top1=0.6726
+  [thermal] GPU 82C > 78C - cooling...
+  [thermal] GPU 77C
+  [thermal] cool enough, resuming
+  [saved best_wait: f1=0.5073  hit=0.8733  top1=0.6726]
+epoch  83  nll=0.2278  val_eae=5.5801  val_acc=0.8590  wait_f1=0.5050  hit=0.8756  top1=0.6705
+  [thermal] GPU 80C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+epoch  84  nll=0.2279  val_eae=5.5914  val_acc=0.8590  wait_f1=0.5037  hit=0.8733  top1=0.6724
+  [thermal] GPU 81C > 78C - cooling...
+  [thermal] GPU 78C
+  [thermal] cool enough, resuming
+early stopping
+
+[model.pt (best val_eae)]
+  test_eae=5.5329  test_acc=0.8601
+  wait_f1: 0.5136
+  wait_prec: 0.4067
+  wait_recall: 0.8648
+  wait_hit_rate: 0.8788
+  wait_top1_acc: 0.6813
+  n_tenpai: 5274
+
+[model_best_wait.pt (best wait_f1)]
+  wait_f1: 0.5137
+  wait_prec: 0.4073
+  wait_recall: 0.8638
+  wait_hit_rate: 0.8779
+  wait_top1_acc: 0.6818
+  n_tenpai: 5274
+
+ONNX保存: /mnt/c/Users/tetsu-4no/mahjong-AI/phase2/models/hand_inference/v32/model.onnx
+wait_logits shape: (1, 3, 113)

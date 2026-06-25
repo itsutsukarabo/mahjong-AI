@@ -58,11 +58,13 @@ HI_PON_DIM    = 34
 HI_CHI_DIM    = 34
 HI_YAKU_DIM   = 21
 
-# ---- 捨て牌トークン形式 (42次元/トークン) ----
-# tile_onehot(34) + turn_norm(1) + is_tsumogiri(1) + is_riichi_decl(1) + is_red_five(1) + player_role(4)
+# ---- 統一イベントトークン形式 (44次元/トークン) ----
+# tile_onehot(34) + turn_norm(1) + is_tsumogiri(1) + is_riichi_decl(1) + is_red_five(1)
+# + player_role(4) + event_is_pass_pon(1) + event_is_pass_chi(1)
 # player_role: [is_target, is_self, is_other1, is_other2]
-HI_TOKEN_DIM = 42
-HI_TOKEN_MAX = 72   # 最大トークン数 (4プレイヤー × 18巡)
+# event: DISCARD=[0,0], PASS_PON=[1,0], PASS_CHI=[0,1]
+HI_TOKEN_DIM = 44
+HI_TOKEN_MAX = 144  # 最大トークン数 (捨て牌~72 + PASSイベント~72)
 
 # ---- Stage-1 モデル入力フォーマット (108次元) ----
 #
@@ -81,7 +83,8 @@ def build_stage1_input(feat: list, target_discard: list) -> list:
 
     score と game_state の順序を修正し、wind を正しい位置から取得する。
     """
-    assert len(feat) >= HI_TOTAL, f"特徴量次元不足: {len(feat)} < {HI_TOTAL}"
+    _min_needed = HI_WIND_START + HI_WIND_DIM  # 176
+    assert len(feat) >= _min_needed, f"特徴量次元不足: {len(feat)} < {_min_needed}"
     assert len(target_discard) == 44, f"target_discard次元不足: {len(target_discard)} != 44"
     return (
         target_discard                                                  # discard  (44)

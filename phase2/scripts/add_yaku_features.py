@@ -85,40 +85,59 @@ def main():
         print(f"入力ファイルなし: {INPUT_PATH}")
         sys.exit(1)
 
-    print(f"読み込み中: {INPUT_PATH}")
-    with open(INPUT_PATH, encoding="utf-8") as f:
-        all_data = [json.loads(line) for line in f if line.strip()]
-    print(f"サンプル数: {len(all_data)}")
+    n_total = sum(1 for line in open(INPUT_PATH, encoding="utf-8") if line.strip())
+    print(f"サンプル数: {n_total}  読み込み中: {INPUT_PATH}")
 
-    sample_dim = len(all_data[0]["features"])
+    # 1行目で次元確認
+    with open(INPUT_PATH, encoding="utf-8") as f:
+        first = json.loads(next(l for l in f if l.strip()))
+    sample_dim = len(first["features"])
     if sample_dim < YAKU_INPUT_DIM:
         print(f"次元数不足: need at least {YAKU_INPUT_DIM}, got {sample_dim}")
         sys.exit(1)
-
     expected_out_dim = sample_dim + YAKU_OUTPUT_DIM
     print(f"入力次元: {sample_dim} → 出力次元: {expected_out_dim}")
 
     tmp_path = OUTPUT_PATH.with_suffix(".tmp.ndjson")
-    with open(tmp_path, "w", encoding="utf-8") as out_f:
-        for start in range(0, len(all_data), BATCH_SIZE):
-            batch = all_data[start:start + BATCH_SIZE]
+    n_done = 0
+    with open(INPUT_PATH, encoding="utf-8") as in_f, \
+         open(tmp_path, "w", encoding="utf-8") as out_f:
+        batch = []
+        for line in in_f:
+            line = line.strip()
+            if not line:
+                continue
+            batch.append(json.loads(line))
+            if len(batch) < BATCH_SIZE:
+                continue
             x = torch.tensor(
                 [build_stage1_input(s["features"], s["target_discard"]) for s in batch],
                 dtype=torch.float32,
             )
             with torch.no_grad():
-                logits = model(x)
-                probs  = torch.sigmoid(logits).tolist()
-
+                probs = torch.sigmoid(model(x)).tolist()
             for sample, prob in zip(batch, probs):
                 sample["features"] = sample["features"] + prob
                 out_f.write(json.dumps(sample) + "\n")
-
-            if (start // BATCH_SIZE) % 50 == 0:
-                print(f"  {start + len(batch)} / {len(all_data)} 処理済み", flush=True)
+            n_done += len(batch)
+            if (n_done // BATCH_SIZE) % 50 == 0:
+                print(f"  {n_done} / {n_total} 処理済み", flush=True)
+            batch = []
+        # 残余バッチ
+        if batch:
+            x = torch.tensor(
+                [build_stage1_input(s["features"], s["target_discard"]) for s in batch],
+                dtype=torch.float32,
+            )
+            with torch.no_grad():
+                probs = torch.sigmoid(model(x)).tolist()
+            for sample, prob in zip(batch, probs):
+                sample["features"] = sample["features"] + prob
+                out_f.write(json.dumps(sample) + "\n")
+            n_done += len(batch)
 
     tmp_path.replace(OUTPUT_PATH)
-    print(f"完了: {len(all_data)} サンプル → {expected_out_dim}次元 → {OUTPUT_PATH}")
+    print(f"完了: {n_done} サンプル → {expected_out_dim}次元 → {OUTPUT_PATH}")
 
 
 if __name__ == "__main__":
