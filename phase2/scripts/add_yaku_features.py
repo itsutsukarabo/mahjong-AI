@@ -107,7 +107,10 @@ def main():
             line = line.strip()
             if not line:
                 continue
-            batch.append(json.loads(line))
+            try:
+                batch.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
             if len(batch) < BATCH_SIZE:
                 continue
             x = torch.tensor(

@@ -329,6 +329,10 @@ function parse_file(xml_path) {
 
     if (!paipu.log || paipu.log.length === 0) return [];
 
+    // 三人麻雀スキップ（第1局の配牌にダミー席が含まれる = 空文字列の手牌）
+    const first_qipai = paipu.log?.[0]?.[0]?.qipai;
+    if (first_qipai?.shoupai?.some(s => s === '')) return [];
+
     const board   = new Majiang.Board({ title: paipu.title, player: paipu.player, qijia: paipu.qijia });
     const records = [];
 

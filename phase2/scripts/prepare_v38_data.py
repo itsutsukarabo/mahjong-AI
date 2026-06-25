@@ -97,6 +97,17 @@ def main():
                 n_skip += 1
                 continue
 
+            # ゴースト席フィルタ: 手牌0枚かつ副露なしのプレイヤーを含む状態を除外
+            def has_ghost(s):
+                hand = s.get("label_hand", [])
+                feat = s.get("features", [])
+                # meld features = feat[0:38] (HI_MELD_START=0, HI_MELD_DIM=38)
+                has_meld = any(v != 0 for v in feat[:38]) if feat else False
+                return sum(hand) == 0 and not has_meld
+            if any(has_ghost(s) for s in samples):
+                n_skip += 1
+                continue
+
             # viewer_l からの相対順: right/across/left
             viewer_l = m0["viewer_l"]
             order = [(viewer_l + 1) % 4, (viewer_l + 2) % 4, (viewer_l + 3) % 4]

@@ -283,7 +283,7 @@ def compute_pressure_labels(s: dict, is_noise: bool) -> tuple:
 def main():
     print(f"最終局マップ構築中: {STATES_PATH}")
     game_max_round: dict = {}
-    with open(STATES_PATH) as f:
+    with open(STATES_PATH, encoding="utf-8") as f:
         for line in f:
             s   = json.loads(line)
             pid = s["paipu_id"]
@@ -296,9 +296,9 @@ def main():
     stats    = defaultdict(int)
     tmp_path = DST_PATH.with_suffix(".tmp.ndjson")
 
-    with open(SRC_PATH) as src_f, \
-         open(STATES_PATH) as st_f, \
-         open(tmp_path, "w") as out_f:
+    with open(SRC_PATH, encoding="utf-8") as src_f, \
+         open(STATES_PATH, encoding="utf-8") as st_f, \
+         open(tmp_path, "w", encoding="utf-8") as out_f:
 
         for i, (src_line, st_line) in enumerate(zip(src_f, st_f)):
             if i % 50000 == 0:
