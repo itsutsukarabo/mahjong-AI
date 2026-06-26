@@ -1,0 +1,30 @@
+{
+  "test_eae": 1.570924514186877,
+  "test_acc": 0.9512433325820749,
+  "wait_f1": 0.8618,
+  "wait_prec": 0.8258,
+  "wait_recall": 0.9459,
+  "wait_hit_rate": 0.9471,
+  "wait_top1_acc": 0.9244,
+  "n_tenpai": 2380,
+  "config": {
+    "fixed_dim": 695,
+    "token_dim": 44,
+    "disc_d": 128,
+    "disc_nhead": 4,
+    "disc_layers": 3,
+    "d_model": 256,
+    "nhead": 4,
+    "num_layers": 3,
+    "n_pai": 34,
+    "n_count_cls": 5,
+    "n_players": 3,
+    "n_blocks": 134,
+    "dropout": 0.1,
+    "lr": 0.0005,
+    "weight_decay": 0.0001,
+    "batch_size": 256,
+    "epochs": 200,
+    "early_stop_patience": 15
+  }
+}

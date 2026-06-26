@@ -450,6 +450,133 @@
         ]);
     }
 
+    // ---- v38 特徴量エンジン ----
+
+    function jikaze_onehot(state, player_l) {
+        // 自風 one-hot (4次元のみ、zhuangfengは含まない)
+        const jikaze = (player_l - state.jushu + 4) % 4;
+        const oh = [0, 0, 0, 0];
+        oh[jikaze] = 1;
+        return oh;
+    }
+
+    function make_hi_features_v38(state, target_l, yaku_probs, tenpai_prob) {
+        // v38: 695次元
+        //   feature_offsets.py の HI_* 定数と完全一致させること
+        //   v29比: 4×discard_features(44)削除 (-176)
+        //          self/o1/o2 jikaze(4) + chi_called(34) を追加 (+114)
+        const other_ls = [1, 2, 3]
+            .map(rel => (state.l + rel) % 4)
+            .filter(l => l !== target_l);  // [other1, other2] clockwise from self
+        return new Float32Array([
+            ...meld_features(state.melds_l[target_l]),                                    // [0:38]   target_meld
+            state.riichi_l[target_l] ? 1 : 0,                                            // [38]     target_riichi
+            ...score_features(state),                                                     // [39:50]  score
+            ...game_state_features(state),                                                // [50:59]  game_state
+            ...meld_features(state.melds_l[state.l]),                                    // [59:97]  self_meld
+            ...visible_counts_vec(state),                                                 // [97:131] visible_counts
+            ...red_discard_signal(state.discards_l[target_l], state.riichi_l[target_l]), // [131:134] red_disc_sig
+            ...red_visible_flags(state),                                                  // [134:137] red_visible
+            ...pass_pon_signal_from_state(state, target_l),                              // [137:171] pon_pass(target)
+            ...wind_features(state, target_l),                                           // [171:176] wind(target) 5次元
+            ...new Array(34).fill(0),                                                    // [176:210] chi_pass(target) ゼロ
+            ...chi_called_tile_signal_from_melds(state.melds_l[target_l]),               // [210:244] chi_called(target)
+            ...dora_features(state.baopai),                                              // [244:278] dora
+            ...meld_features(state.melds_l[other_ls[0]]),                                // [278:316] other1_meld
+            ...meld_features(state.melds_l[other_ls[1]]),                                // [316:354] other2_meld
+            ...pass_pon_signal_from_state(state, state.l),                               // [354:388] self_pon_pass
+            ...pass_pon_signal_from_state(state, other_ls[0]),                           // [388:422] o1_pon_pass
+            ...pass_pon_signal_from_state(state, other_ls[1]),                           // [422:456] o2_pon_pass
+            ...new Array(34).fill(0),                                                    // [456:490] self_chi_pass ゼロ
+            ...new Array(34).fill(0),                                                    // [490:524] o1_chi_pass ゼロ
+            ...new Array(34).fill(0),                                                    // [524:558] o2_chi_pass ゼロ
+            Math.min(state.lizhibang || 0, 8) / 8,                                      // [558]     lizhibang
+            ...jikaze_onehot(state, state.l),                                            // [559:563] self_jikaze
+            ...jikaze_onehot(state, other_ls[0]),                                        // [563:567] o1_jikaze
+            ...jikaze_onehot(state, other_ls[1]),                                        // [567:571] o2_jikaze
+            ...chi_called_tile_signal_from_melds(state.melds_l[state.l]),                // [571:605] self_chi_called
+            ...chi_called_tile_signal_from_melds(state.melds_l[other_ls[0]]),            // [605:639] o1_chi_called
+            ...chi_called_tile_signal_from_melds(state.melds_l[other_ls[1]]),            // [639:673] o2_chi_called
+            ...(yaku_probs || new Array(21).fill(0)),                                    // [673:694] yaku
+            tenpai_prob != null ? tenpai_prob : 0,                                       // [694]     tenpai
+        ]);
+    }
+
+    function make_discard_tokens_v38(round_log, current_idx, menfeng, target_l) {
+        // 44次元/トークン × 最大144トークンのシーケンスを構築
+        // PASS_PON/PASS_CHI はブラウザ不可のためゼロ; is_tsumogiri は近似計算
+        const TOKEN_DIM = 44;
+        const TOKEN_MAX = 144;
+
+        // player_role: clockwise from self (menfeng), excluding target
+        const others = [1, 2, 3].map(rel => (menfeng + rel) % 4).filter(l => l !== target_l);
+        function player_role(l) {
+            if (l === target_l)   return [1, 0, 0, 0];
+            if (l === menfeng)    return [0, 1, 0, 0];
+            if (l === others[0])  return [0, 0, 1, 0];
+            return                       [0, 0, 0, 1];
+        }
+
+        const tokens = [];
+        const last_zimo = [null, null, null, null];
+        let total_discards = 0;
+
+        for (let i = 0; i <= current_idx && i < round_log.length; i++) {
+            const ev = round_log[i];
+            if (!ev) continue;
+
+            if (ev.zimo || ev.gangzimo) {
+                const z = ev.zimo || ev.gangzimo;
+                last_zimo[z.l] = z.p;
+            }
+
+            if (ev.dapai) {
+                const l   = ev.dapai.l;
+                const p   = ev.dapai.p;
+                const raw = p.replace(/[_*+=\-]/g, '');
+                const is_red = (raw[1] === '0') ? 1 : 0;
+                const norm   = raw[0] + (raw[1] === '0' ? '5' : raw[1]);
+                const tile_idx = PAI_INDEX[norm];
+                if (tile_idx === undefined) continue;
+
+                // tsumogiri: 引いた牌をそのまま捨てた
+                let is_tsumogiri = 0;
+                if (last_zimo[l]) {
+                    const dr = last_zimo[l].replace(/[_*+=\-]/g, '');
+                    const dn = dr[0] + (dr[1] === '0' ? '5' : dr[1]);
+                    if (dn === norm) is_tsumogiri = 1;
+                }
+                const is_riichi_decl = p.endsWith('*') ? 1 : 0;
+                const role = player_role(l);
+
+                const tok = new Array(TOKEN_DIM).fill(0);
+                tok[tile_idx] = 1;                   // [0:34]  tile_onehot
+                tok[34] = total_discards / 70;        // [34]    turn_norm
+                tok[35] = is_tsumogiri;               // [35]    is_tsumogiri
+                tok[36] = is_riichi_decl;             // [36]    is_riichi_decl
+                tok[37] = is_red;                     // [37]    is_red_five
+                tok[38] = role[0]; tok[39] = role[1]; // [38:42] player_role
+                tok[40] = role[2]; tok[41] = role[3];
+                tok[42] = 0; tok[43] = 0;             // [42:44] pass_pon/chi ゼロ
+
+                tokens.push(tok);
+                total_discards++;
+            }
+        }
+
+        // 末尾から TOKEN_MAX トークンを取得（先頭は padding=True）
+        const N     = Math.min(tokens.length, TOKEN_MAX);
+        const start = tokens.length - N;
+        const flat  = new Float32Array(TOKEN_MAX * TOKEN_DIM);
+        const mask  = new Uint8Array(TOKEN_MAX).fill(1);  // 1=padding(True)
+
+        for (let i = 0; i < N; i++) {
+            for (let d = 0; d < TOKEN_DIM; d++) flat[i * TOKEN_DIM + d] = tokens[start + i][d];
+            mask[i] = 0;  // 0=有効トークン(False)
+        }
+        return { flat, mask };
+    }
+
     /* ---- ユーティリティ ---- */
 
     function softmax(arr) {
@@ -1025,14 +1152,25 @@
                     }
                 }
 
-                // Stage 2: 手牌推定 — (1, 3, 442) バッチ推論
-                const flat_3d = new Float32Array(3 * 757);
+                // Stage 2: 手牌推定 — v38: (1,3,695) 固定特徴 + トークン列
+                const FIXED_DIM = 695, TOK_DIM = 44, TOK_MAX = 144;
+                const round_log_v38 = paipu.log[log_idx];
+                const flat_feats  = new Float32Array(3 * FIXED_DIM);
+                const flat_toks   = new Float32Array(3 * TOK_MAX * TOK_DIM);
+                const flat_masks  = new Uint8Array(3 * TOK_MAX).fill(1);
                 for (let i = 0; i < 3; i++) {
-                    const feats = make_hi_features_v29(state, target_ls[i], yaku_probs_list[i], tenpai_prob_list[i]);
-                    flat_3d.set(feats, i * 757);
+                    const feats = make_hi_features_v38(state, target_ls[i], yaku_probs_list[i], tenpai_prob_list[i]);
+                    flat_feats.set(feats, i * FIXED_DIM);
+                    const { flat: tok_flat, mask } = make_discard_tokens_v38(round_log_v38, current_idx, menfeng, target_ls[i]);
+                    flat_toks.set(tok_flat, i * TOK_MAX * TOK_DIM);
+                    flat_masks.set(mask, i * TOK_MAX);
                 }
-                const tensor = new ort.Tensor('float32', flat_3d, [1, 3, 757]);
-                const out = await sessions.hand_inference.run({ features: tensor });
+                const feat_tensor  = new ort.Tensor('float32', flat_feats,  [1, 3, FIXED_DIM]);
+                const token_tensor = new ort.Tensor('float32', flat_toks,   [1, 3, TOK_MAX, TOK_DIM]);
+                const mask_tensor  = new ort.Tensor('bool',    flat_masks,  [1, 3, TOK_MAX]);
+                const out = await sessions.hand_inference.run({
+                    features: feat_tensor, disc_tokens: token_tensor, disc_mask: mask_tensor
+                });
 
                 // 出力テンソルをプレイヤーごとに分割
                 // logits:      (1, 3, 34, 5) → 各プレイヤー 170要素
@@ -1095,7 +1233,7 @@
     async function load_sessions() {
         const s = {};
         const models = [
-            ['hand_inference', MODEL_BASE + 'hand_inference/v32/model.onnx'],
+            ['hand_inference', MODEL_BASE + 'hand_inference/v38/model.onnx'],
             ['behavior_clone', MODEL_BASE + 'behavior_clone/v2/model.onnx'],
             ['value_function', MODEL_BASE + 'value_function/v2/model.onnx'],
             ['yaku_inference',   MODEL_BASE + 'yaku_inference/v1/model.onnx'],
