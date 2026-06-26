@@ -577,6 +577,169 @@
         return { flat, mask };
     }
 
+    // ---- ハーネス: 論理整合性チェック ----
+
+    function compute_paishu_per_tile(state) {
+        // 自分から見えていない各牌の残り枚数を返す number[34]
+        // visible_counts_vec と同じロジックで集計し、4から引く
+        const counts = new Array(34).fill(0);
+        for (let l = 0; l < 4; l++) {
+            for (const p of state.discards_l[l] || []) {
+                const pi = pai_to_idx(p);
+                if (pi >= 0) counts[pi]++;
+            }
+            for (const m of state.melds_l[l] || []) {
+                if (!m) continue;
+                const s = m[0];
+                const dirIdx = m.search(/[+=\-]/);
+                for (let i = 1; i < m.length; i++) {
+                    if (/[+=\-]/.test(m[i])) continue;
+                    if (dirIdx >= 0 && i === dirIdx - 1) continue; // 請求牌スキップ
+                    const n = parseInt(m[i]);
+                    if (isNaN(n)) continue;
+                    const pi = pai_to_idx(s + (n === 0 ? 5 : n));
+                    if (pi >= 0) counts[pi]++;
+                }
+            }
+        }
+        const hand = encode_hand(state.hands_l[state.l]);
+        for (let i = 0; i < 34; i++) counts[i] += hand[i];
+        return counts.map(c => Math.max(0, 4 - c));
+    }
+
+    function get_post_riichi_tsumo_tiles(state, target_l, round_log, current_idx) {
+        // リーチ宣言後にツモ切りした牌のインデックスリストを返す (B3用)
+        const result = [];
+        let riichi_declared = false;
+        let last_zimo_p = null;
+        for (let i = 0; i <= current_idx && i < round_log.length; i++) {
+            const ev = round_log[i];
+            if (!ev) continue;
+            if ((ev.zimo || ev.gangzimo) && (ev.zimo || ev.gangzimo).l === target_l) {
+                last_zimo_p = (ev.zimo || ev.gangzimo).p;
+            }
+            if (ev.dapai && ev.dapai.l === target_l) {
+                const p = ev.dapai.p;
+                if (p.includes('*')) riichi_declared = true;
+                if (riichi_declared && last_zimo_p) {
+                    const dr = last_zimo_p.replace(/[_*+=\-]/g, '');
+                    const dc = p.replace(/[_*+=\-]/g, '');
+                    const dn = dr[0] + (dr[1] === '0' ? '5' : dr[1]);
+                    const cn = dc[0] + (dc[1] === '0' ? '5' : dc[1]);
+                    if (dn === cn) {
+                        const ti = PAI_INDEX[cn];
+                        if (ti !== undefined && !result.includes(ti)) result.push(ti);
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    function check_A(probs_per_tile, paishu) {
+        // 枯れ牌 (paishu=0) に確率が割り当てられていれば違反
+        let score = 0;
+        const flagged = [];
+        for (let t = 0; t < 34; t++) {
+            if (paishu[t] === 0) {
+                const p_has = 1.0 - probs_per_tile[t][0]; // P(枚数>=1)
+                score += p_has;
+                if (p_has > 0.02) flagged.push({ tile: PAI_NAMES[t], prob: p_has });
+            }
+        }
+        return { type: 'A', score, flagged };
+    }
+
+    function check_B1(probs_per_tile, paishu, state, target_l) {
+        // target_l が捨てた牌を所持している確率が残り枚数上限を大幅に超えていれば違反
+        const unseen = paishu.reduce((a, b) => a + b, 0);
+        let excess = 0;
+        const flagged = [];
+        const discarded_set = new Set();
+        for (const p of state.discards_l[target_l] || []) {
+            const t = pai_to_idx(p);
+            if (t >= 0) discarded_set.add(t);
+        }
+        for (const t of discarded_set) {
+            const upper = unseen > 0 ? paishu[t] / unseen : 0;
+            const actual = 1.0 - probs_per_tile[t][0];
+            const over = Math.max(0, actual - upper * 2); // 上限の2倍超で過剰
+            if (over > 0.05) {
+                excess += over;
+                flagged.push({ tile: PAI_NAMES[t], excess: over });
+            }
+        }
+        return { type: 'B1', score: excess, flagged };
+    }
+
+    function check_B2(probs_per_tile, state, target_l) {
+        // リーチ後に確率分布が収束していない (エントロピーが高い)
+        if (!state.riichi_l[target_l]) return { type: 'B2', score: 0, flagged: [] };
+        let entropy = 0;
+        for (let t = 0; t < 34; t++) {
+            for (let k = 0; k < 5; k++) {
+                const p = probs_per_tile[t][k];
+                if (p > 1e-9) entropy -= p * Math.log(p);
+            }
+        }
+        const THRESHOLD = 15.0;
+        const score = Math.max(0, entropy - THRESHOLD);
+        return { type: 'B2', score, flagged: score > 0 ? [{ entropy: entropy.toFixed(2) }] : [] };
+    }
+
+    function check_B3(tatsu_probs, state, target_l, round_log, current_idx) {
+        // リーチ後ツモ切り牌に待ちが高く割り当てられていれば矛盾
+        if (!state.riichi_l[target_l] || !tatsu_probs) {
+            return { type: 'B3', score: 0, flagged: [] };
+        }
+        const tsumo_cut_tiles = get_post_riichi_tsumo_tiles(state, target_l, round_log, current_idx);
+        let score = 0;
+        const flagged = [];
+        for (const t of tsumo_cut_tiles) {
+            // wait_logits: 両面(0-17), 辺張(18-23), 嵌張(24-44), 単騎(45-78), 双碰(79-112)
+            const tanki_prob   = t < 34 ? (tatsu_probs[45 + t] || 0) : 0;
+            const shanpon_prob = t < 34 ? (tatsu_probs[79 + t] || 0) : 0;
+            const p = Math.max(tanki_prob, shanpon_prob);
+            if (p > 0.3) {
+                score += p;
+                flagged.push({ tile: PAI_NAMES[t], prob: p.toFixed(3) });
+            }
+        }
+        return { type: 'B3', score, flagged };
+    }
+
+    function check_B4(probs_per_tile, prev_probs, pass_tiles) {
+        // PASSイベント後に確率が下がらなかった牌を検出
+        // prev_probs が null の場合 (初回・キャッシュなし) はスキップ
+        if (!prev_probs || pass_tiles.length === 0) {
+            return { type: 'B4', score: 0, flagged: [] };
+        }
+        let score = 0;
+        const flagged = [];
+        for (const t of pass_tiles) {
+            const before = 1.0 - prev_probs[t][0];
+            const after  = 1.0 - probs_per_tile[t][0];
+            const drop   = before - after;
+            if (drop < 0.05 && before > 0.15) {
+                score += before - drop;
+                flagged.push({ tile: PAI_NAMES[t], before: before.toFixed(3), after: after.toFixed(3) });
+            }
+        }
+        return { type: 'B4', score, flagged };
+    }
+
+    function run_checkers(probs_per_tile, tatsu_probs, state, target_l, round_log, current_idx, paishu) {
+        const turn = [0,1,2,3].reduce((s, l) => s + (state.discards_l[l] || []).length, 0);
+        return {
+            turn,
+            A:  check_A(probs_per_tile, paishu),
+            B1: check_B1(probs_per_tile, paishu, state, target_l),
+            B2: check_B2(probs_per_tile, state, target_l),
+            B3: check_B3(tatsu_probs, state, target_l, round_log, current_idx),
+            B4: check_B4(probs_per_tile, null, []), // B4: 前回キャッシュなし時はスキップ
+        };
+    }
+
     /* ---- ユーティリティ ---- */
 
     function softmax(arr) {
@@ -1181,6 +1344,7 @@
                 const block_data  = out['block_logits'] ? out['block_logits'].data : null;
                 const wait_data   = out['wait_logits'] ? out['wait_logits'].data : null; // v32: 113-dim tatsu
 
+                const paishu  = compute_paishu_per_tile(state); // 全player共通
                 const players = [];
                 for (let i = 0; i < 3; i++) {
                     const target_l  = target_ls[i];
@@ -1214,9 +1378,19 @@
                         tatsu_probs = Array.from(wl).map(x => 1 / (1 + Math.exp(-x)));
                     }
 
+                    const checkers = run_checkers(
+                        probs_per_tile, tatsu_probs, state, target_l,
+                        round_log_v38, current_idx, paishu
+                    );
+                    if (window.FeedbackLogger) {
+                        window.FeedbackLogger.pushLog({
+                            player_rel: i + 1, seat: SEAT_NAMES[i], ...checkers
+                        });
+                    }
+
                     players.push({
                         l: target_l, rel: i + 1, seat_name: SEAT_NAMES[i],
-                        probs_per_tile, aka, block_ev, tatsu_probs,
+                        probs_per_tile, aka, block_ev, tatsu_probs, checkers,
                     });
                 }
                 result.hand_inference = { players };

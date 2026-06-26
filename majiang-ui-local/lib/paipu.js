@@ -1173,6 +1173,32 @@ module.exports = class Paipu {
                 return wrap;
             };
 
+            // ハーネス: 信頼度バッジ生成
+            const make_confidence_badge = (checkers) => {
+                const issues = [];
+                if (checkers.A  && checkers.A.score  > 0.05) issues.push('A: 枯れ牌' + (checkers.A.score * 100).toFixed(0) + '%');
+                if (checkers.B1 && checkers.B1.score > 0.08) issues.push('B1: 捨牌超過');
+                if (checkers.B2 && checkers.B2.score > 3.0)  issues.push('B2: リーチ後未収束');
+                if (checkers.B3 && checkers.B3.score > 0.3)  issues.push('B3: 待ち矛盾');
+                const ok = issues.length === 0;
+                const label = ok ? '高信頼' : issues.join(' / ');
+                const color = ok ? '#2d6a2d' : '#6a2d2d';
+                const prefix = ok ? '[OK] ' : '[!] ';
+                return $('<div class="ai-hi-confidence">').css({
+                    fontSize: '11px', padding: '3px 6px', marginTop: '4px',
+                    background: color, borderRadius: '3px', color: '#ccc'
+                }).text(prefix + label);
+            };
+
+            // ハーネスログエクスポートボタン (プレイヤー行の前に1回だけ挿入)
+            if (window.FeedbackLogger) {
+                const cnt = window.FeedbackLogger.getCount();
+                const btn = $('<button class="ai-hi-export-btn">').text('ハーネスログ出力 (' + cnt + '件)')
+                    .css({ fontSize: '11px', margin: '4px 0', padding: '2px 8px', cursor: 'pointer' })
+                    .on('click', () => window.FeedbackLogger.exportLogs());
+                hi_body.append(btn);
+            }
+
             for (const p of phase2.hand_inference.players) {
                 const section = $('<div class="ai-hi-player-section">');
                 section.append($('<div class="ai-hi-player-label">').text(p.seat_name + ':'));
@@ -1225,6 +1251,7 @@ module.exports = class Paipu {
                 section.append(table);
 
                 if (p.block_ev) section.append(make_block_section(p.block_ev, p.tatsu_probs));
+                if (p.checkers) section.append(make_confidence_badge(p.checkers));
                 hi_body.append(section);
             }
         } else {
