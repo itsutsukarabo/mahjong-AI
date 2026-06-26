@@ -733,10 +733,9 @@
         return {
             turn,
             A:  check_A(probs_per_tile, paishu),
-            B1: check_B1(probs_per_tile, paishu, state, target_l),
             B2: check_B2(probs_per_tile, state, target_l),
             B3: check_B3(tatsu_probs, state, target_l, round_log, current_idx),
-            B4: check_B4(probs_per_tile, null, []), // B4: 前回キャッシュなし時はスキップ
+            B4: check_B4(probs_per_tile, null, []),
         };
     }
 

@@ -3,7 +3,7 @@
 (function () {
     const STORAGE_KEY = 'majiang_feedback_log';
     const MAX_RECORDS = 5000;
-    const THRESHOLD = { A: 0.05, B1: 0.08, B2: 3.0, B3: 0.3, B4: 0.1 };
+    const THRESHOLD = { A: 0.05, B2: 3.0, B3: 0.3, B4: 0.1 };
 
     function pushLog(record) {
         if (!Object.entries(THRESHOLD).some(([k, v]) => record[k] && record[k].score > v)) return;
