@@ -1396,6 +1396,15 @@
             } catch(e) { console.warn('AI Phase2: hand_inference error', e); }
         }
 
+        // 局面コンテキスト (フィードバック記録用)
+        result._context = {
+            log_idx,
+            current_idx,
+            menfeng,
+            turn: [0,1,2,3].reduce((s,l) => s + (state.discards_l[l]||[]).length, 0),
+            remaining: state.remaining,
+        };
+
         return result;
     }
 

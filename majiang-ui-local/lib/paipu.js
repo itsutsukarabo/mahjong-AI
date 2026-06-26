@@ -1254,6 +1254,104 @@ module.exports = class Paipu {
                 if (p.checkers) section.append(make_confidence_badge(p.checkers));
                 hi_body.append(section);
             }
+
+            // ---- ユーザーフィードバック入力欄 ----
+            if (window.FeedbackLogger) {
+                const ctx = phase2._context || {};
+
+                const fb_wrap = $('<div class="ai-user-fb-wrap">').css({
+                    marginTop: '12px', padding: '8px',
+                    borderTop: '1px solid #444', fontSize: '12px',
+                });
+                fb_wrap.append(
+                    $('<div>').css({ color: '#aaa', marginBottom: '4px' })
+                              .text('フィードバック (この局面についてメモ)')
+                );
+
+                const textarea = $('<textarea class="ai-user-fb-input">').css({
+                    width: '100%', height: '56px', fontSize: '12px',
+                    background: '#222', color: '#ddd', border: '1px solid #555',
+                    borderRadius: '3px', padding: '4px', boxSizing: 'border-box',
+                    resize: 'vertical',
+                }).attr('placeholder', 'モデルの挙動で気になった点や仮説を入力…');
+
+                const btn_row = $('<div>').css({ display: 'flex', gap: '6px', marginTop: '4px' });
+
+                const submit_btn = $('<button>').text('記録する').css({
+                    fontSize: '11px', padding: '2px 10px', cursor: 'pointer',
+                    background: '#2a5a2a', color: '#ccc', border: '1px solid #4a8a4a',
+                    borderRadius: '3px',
+                });
+
+                const export_btn = $('<button>').text('全件出力').css({
+                    fontSize: '11px', padding: '2px 8px', cursor: 'pointer',
+                    background: '#333', color: '#aaa', border: '1px solid #555',
+                    borderRadius: '3px',
+                });
+
+                const status = $('<span class="ai-user-fb-status">').css({
+                    fontSize: '11px', color: '#888', marginLeft: '6px', alignSelf: 'center',
+                });
+
+                // 最新件数を表示
+                const cnt = window.FeedbackLogger.getUserCount();
+                status.text(cnt + '件蓄積');
+
+                // 過去フィードバック表示欄
+                const history = $('<div class="ai-user-fb-history">').css({
+                    marginTop: '6px', maxHeight: '80px', overflowY: 'auto',
+                    fontSize: '11px', color: '#999',
+                });
+
+                const render_history = () => {
+                    history.empty();
+                    const recents = window.FeedbackLogger.getUserFeedbacks(5).reverse();
+                    if (recents.length === 0) return;
+                    for (const r of recents) {
+                        const d = new Date(r.ts);
+                        const ts_str = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+                        const turn_str = r.ctx && r.ctx.turn != null ? `巡${r.ctx.turn}` : '';
+                        history.append(
+                            $('<div>').css({ borderBottom: '1px solid #333', padding: '2px 0' })
+                                      .text(`[${ts_str}${turn_str ? ' ' + turn_str : ''}] ${r.text}`)
+                        );
+                    }
+                };
+                render_history();
+
+                submit_btn.on('click', () => {
+                    const text = textarea.val();
+                    if (!text.trim()) return;
+                    // チェッカー結果をコンテキストに含める
+                    const checker_summary = {};
+                    if (phase2.hand_inference) {
+                        for (const p of phase2.hand_inference.players) {
+                            if (p.checkers) {
+                                checker_summary[p.seat_name] = {
+                                    A:  p.checkers.A  ? p.checkers.A.score.toFixed(3)  : 0,
+                                    B2: p.checkers.B2 ? p.checkers.B2.score.toFixed(3) : 0,
+                                    B3: p.checkers.B3 ? p.checkers.B3.score.toFixed(3) : 0,
+                                };
+                            }
+                        }
+                    }
+                    const full_ctx = { ...ctx, checkers: checker_summary };
+                    const ok = window.FeedbackLogger.submitUserFeedback(text, full_ctx);
+                    if (ok) {
+                        textarea.val('');
+                        const new_cnt = window.FeedbackLogger.getUserCount();
+                        status.text(new_cnt + '件蓄積');
+                        render_history();
+                    }
+                });
+
+                export_btn.on('click', () => window.FeedbackLogger.exportUserFeedbacks());
+
+                btn_row.append(submit_btn, export_btn, status);
+                fb_wrap.append(textarea, btn_row, history);
+                hi_body.append(fb_wrap);
+            }
+
         } else {
             hi_body.html('<span class="ai-p2-na">-</span>');
         }
