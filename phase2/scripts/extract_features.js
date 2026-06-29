@@ -597,7 +597,7 @@ function others_meld_type_features(rec) {
 // ---- 3モデル用の特徴量・ラベル生成 ----
 
 /**
- * 手牌類推モデル用 (v38: 固定特徴量673次元 + event_tokens別フィールド(44次元/トークン))
+ * 手牌類推モデル用 (v41: 固定特徴量673次元 + event_tokens別フィールド(44次元/トークン))
  * 視点プレイヤー l から見た 対象プレイヤー target_l の特徴量 + ラベル
  *
  * 固定特徴量 (673次元):
@@ -609,10 +609,11 @@ function others_meld_type_features(rec) {
  *   self_chi(34) + o1_chi(34) + o2_chi(34) + lizhibang(1) +
  *   self_jikaze(4) + o1_jikaze(4) + o2_jikaze(4) +
  *   self_chi_called(34) + o1_chi_called(34) + o2_chi_called(34)
- *   = 673次元 (+ add_yaku 21 + add_tenpai 1 = 695次元)
+ *   = 673次元 (+ add_tenpai 1 = 674次元, yaku_prob は廃止・yaku_head として統合)
  *
- * discard_tokens: 全4プレイヤーの捨て牌を42次元トークン×N列 (別フィールド)
+ * discard_tokens: 全4プレイヤーの捨て牌を44次元トークン×N列 (別フィールド)
  * target_discard: target捨て牌集計(44次元) → Stage-1 モデル互換用 (別フィールド)
+ * label_yaku:     21次元役ラベル。target_l が和了した場合のみ有効 (label_won=1)
  */
 function make_hand_inference_sample(rec, target_l) {
     // viewer でも target でもない2プレイヤーを相対順で取得
@@ -649,7 +650,7 @@ function make_hand_inference_sample(rec, target_l) {
         ...chi_called_tile_signal(rec.melds_l?.[rec.l]),           // 34 self_chi_called
         ...chi_called_tile_signal(rec.melds_l?.[other_ls[0]]),     // 34 other1_chi_called
         ...chi_called_tile_signal(rec.melds_l?.[other_ls[1]]),     // 34 other2_chi_called
-    ];  // 673次元 (+ add_yaku 21 + add_tenpai 1 = 695次元)
+    ];  // 673次元 (+ add_tenpai 1 = 674次元)
 
     const discard_tokens = build_event_tokens(rec, target_l, other_ls);
     const target_discard = discard_features(rec.discards_l[target_l]);  // Stage-1互換用
@@ -660,7 +661,14 @@ function make_hand_inference_sample(rec, target_l) {
         ? compute_block_labels(Majiang.Shoupai.fromString(rec.hands_l[target_l]))
         : null;
 
-    return { features, discard_tokens, target_discard, label_hand: hand_vec_target, label_red: red_target, label_block, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
+    // 役ラベル: target_l が和了した局面のみ有効 (viewer は関係なく target が和了したか)
+    const target_won = Array.isArray(rec.yaku_l?.[target_l]) && rec.yaku_l[target_l].length > 0;
+    const label_yaku = target_won
+        ? encode_yaku(rec.yaku_l[target_l], rec.win_suit_l?.[target_l] || '', rec.win_sanshoku_l?.[target_l] || 0)
+        : new Array(YAKU_LABELS.length).fill(0);
+    const label_won = target_won ? 1 : 0;
+
+    return { features, discard_tokens, target_discard, label_hand: hand_vec_target, label_red: red_target, label_block, label_yaku, label_won, meta: { paipu_id: rec.paipu_id, round_idx: rec.round_idx, event_idx: rec.event_idx, viewer_l: rec.l, target_l } };
 }
 
 /**

@@ -43,9 +43,9 @@ HI_O2_JIKAZE       = 567  # other2_jikaze          [567:571]  4次元
 HI_SELF_CHI_CALLED = 571  # self_chi_called        [571:605] 34次元
 HI_O1_CHI_CALLED   = 605  # other1_chi_called      [605:639] 34次元
 HI_O2_CHI_CALLED   = 639  # other2_chi_called      [639:673] 34次元
-HI_YAKU_START      = 673  # yaku_prob              [673:694] 21次元
-HI_TENPAI          = 694  # tenpai_prob            [694]      1次元
-HI_TOTAL           = 695  # 合計
+# HI_YAKU_START は廃止: yaku_head として手牌推定モデルに統合 (v41~)
+HI_TENPAI          = 673  # tenpai_prob            [673]      1次元
+HI_TOTAL           = 674  # 合計
 
 # ---- 各ブロックの長さ ----
 
@@ -56,7 +56,7 @@ HI_DORA_DIM   = 34
 HI_MELD_DIM   = 38
 HI_PON_DIM    = 34
 HI_CHI_DIM    = 34
-HI_YAKU_DIM   = 21
+HI_YAKU_DIM   = 21  # モデルのyaku_head出力次元（特徴量としては使わない）
 
 # ---- 統一イベントトークン形式 (44次元/トークン) ----
 # tile_onehot(34) + turn_norm(1) + is_tsumogiri(1) + is_riichi_decl(1) + is_red_five(1)
