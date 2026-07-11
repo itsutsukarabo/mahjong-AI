@@ -186,7 +186,9 @@ function score_features(rec, player_l) {
  * サイズ: 4(自風 one-hot: 東南西北) + 1(場風: 東=0/南=1) = 5
  */
 function wind_features(rec, player_l) {
-    const jikaze = (player_l - rec.jushu + 4) % 4;
+    // v45修正: player_l は座席番号(0=東=当局の親)。座席番号=自風インデックス。
+    // 旧: (player_l - rec.jushu + 4) % 4 → 75%の局で誤った風を割り当てていた。
+    const jikaze = player_l;
     const oh = [0, 0, 0, 0];
     oh[jikaze] = 1;
     return [...oh, rec.zhuangfeng];
@@ -197,32 +199,100 @@ function wind_features(rec, player_l) {
  */
 function jikaze_onehot(rec, player_l) {
     const oh = [0, 0, 0, 0];
-    oh[(player_l - rec.jushu + 4) % 4] = 1;
+    // v45修正: 座席番号=自風インデックス（旧: (player_l - rec.jushu + 4) % 4 は誤り）
+    oh[player_l] = 1;
     return oh;
 }
 
+// ---- v45 danger_level ヘルパー（可視情報のみ・リークなし） ----
+// 参照: discards_l のみ。sh_l / hands_l 不使用。
+// 時系列境界: t_j = 4*k + j >= t_key で break → 未来のリーチを見ない。
+
+function _riichi_suji_js(discards_j, j, t_key) {
+    // t_key より前のリーチ宣言牌（'*'）からスジインデックスセットを返す。
+    // 旧 add_intent_labels は '_' で探していたが、v45 では '*' が正しい。
+    for (let k = 0; k < discards_j.length; k++) {
+        const t_j = 4 * k + j;
+        if (t_j >= t_key) break;
+        const tile = discards_j[k];
+        if (!tile.includes('*')) continue;
+        const base = tile.replace(/[_*+=\-]/g, '');
+        const idx = PAI_INDEX[base];
+        if (idx === undefined || idx >= 27) return new Set();   // 字牌はスジなし
+        const suit = Math.floor(idx / 9);
+        const n    = idx % 9;
+        const suji = new Set();
+        if (n >= 3) suji.add(suit * 9 + (n - 3));
+        if (n <= 5) suji.add(suit * 9 + (n + 3));
+        return suji;
+    }
+    return new Set();
+}
+
+function _was_riichi_before(j, t_key, discards_j) {
+    for (let k = 0; k < discards_j.length; k++) {
+        if (4 * k + j >= t_key) break;
+        if (discards_j[k].includes('*')) return true;
+    }
+    return false;
+}
+
+function _danger_level(act_idx, l, t_key, discards_l) {
+    // 0=リーチなし, 1=現物, 2=スジ, 3=無スジ
+    if (act_idx < 0) return 0;
+    const riichi_js = [];
+    for (let j = 0; j < 4; j++) {
+        if (j !== l && _was_riichi_before(j, t_key, discards_l[j] || [])) riichi_js.push(j);
+    }
+    if (riichi_js.length === 0) return 0;
+
+    // 現物チェック（t_key 前のリーチ者の捨て牌に act_idx があるか）
+    for (const j of riichi_js) {
+        const dj = discards_l[j] || [];
+        for (let k = 0; k < dj.length; k++) {
+            if (4 * k + j >= t_key) break;
+            if ((PAI_INDEX[dj[k].replace(/[_*+=\-]/g, '')] ?? -1) === act_idx) return 1;
+        }
+    }
+
+    // スジチェック
+    let all_suji = true;
+    for (const j of riichi_js) {
+        if (!_riichi_suji_js(discards_l[j] || [], j, t_key).has(act_idx)) {
+            all_suji = false;
+            break;
+        }
+    }
+    return all_suji ? 2 : 3;
+}
+
 /**
- * 捨て牌＋パスイベントを時系列順トークン列に変換する（44次元/トークン）
+ * 捨て牌＋パスイベントを時系列順トークン列に変換する（45次元/トークン）
  *
  * トークン構造:
  *   tile_onehot(34) + turn_norm(1) + is_tsumogiri(1) + is_riichi_decl(1) + is_red_five(1)
- *   + player_role(4) + event_is_pass_pon(1) + event_is_pass_chi(1)
+ *   + player_role(4) + event_is_pass_pon(1) + event_is_pass_chi(1) + danger_level_norm(1)
  *
  * player_role: [is_target, is_self, is_other1, is_other2]
- * event: DISCARD=[0,0], PASS_PON=[1,0], PASS_CHI=[0,1]
+ * event: DISCARD=[0,0,dl/3], PASS_PON=[1,0,0], PASS_CHI=[0,1,0]
+ *
+ * v45変更点:
+ *   - dealer = rec.jushu % 4 廃止 → seat_off = l (l は座席番号、0=東=常に親)
+ *   - danger_level_norm を末尾に追加 (44→45次元)
  *
  * ・DISCARD: 全4プレイヤーの捨て牌（全員分）
- * ・PASS_PON/PASS_CHI: target_l 自身のパスイベントのみ
+ * ・PASS_PON/PASS_CHI: target_l 自身のパスイベントのみ（danger_level=0）
  * ・全イベントをグローバル巡数でソートして時系列順に結合
  * 最大トークン数: ~144 (捨て牌72 + PASSイベント~72)
  */
-const EVENT_TOKEN_DIM = 44;
+const EVENT_TOKEN_DIM = 45;
 const MAX_GLOBAL_TURNS = 70;  // total_discards の最大値（pass t 値の正規化基準）
 
 function build_event_tokens(rec, target_l, other_ls) {
     const events = [];  // { t_key: number, token: number[] }
 
-    const dealer   = rec.jushu % 4;
+    // v45修正: dealer=0固定（l は座席番号、0=東=当局の親）
+    // 旧: const dealer = rec.jushu % 4; → 75%の局でトークン順序が誤り
     const role_map = {
         [target_l]:    [1, 0, 0, 0],
         [rec.l]:       [0, 1, 0, 0],
@@ -233,7 +303,7 @@ function build_event_tokens(rec, target_l, other_ls) {
     // --- DISCARD events (全4プレイヤー) ---
     for (const l of [target_l, rec.l, other_ls[0], other_ls[1]]) {
         const role     = role_map[l];
-        const seat_off = (l - dealer + 4) % 4;
+        const seat_off = l;   // v45修正: 座席番号=seat_off (dealer=0固定)
         const discards = rec.discards_l[l] || [];
         for (let i = 0; i < discards.length; i++) {
             const p = discards[i];
@@ -246,14 +316,15 @@ function build_event_tokens(rec, target_l, other_ls) {
             const tile_oh = new Array(N_PAI).fill(0);
             if (pi >= 0) tile_oh[pi] = 1;
             const t_key = 4 * i + seat_off;
+            const dl = _danger_level(pi, l, t_key, rec.discards_l) / 3;
             events.push({
                 t_key,
-                token: [...tile_oh, t_key / MAX_GLOBAL_TURNS, is_tsumogiri, is_riichi_decl, is_red, ...role, 0, 0],
+                token: [...tile_oh, t_key / MAX_GLOBAL_TURNS, is_tsumogiri, is_riichi_decl, is_red, ...role, 0, 0, dl],
             });
         }
     }
 
-    // --- PASS_PON events (target_l のみ) ---
+    // --- PASS_PON events (target_l のみ、danger_level=0) ---
     const target_role = [1, 0, 0, 0];
     for (const { p, t } of (rec.pon_passes_l?.[target_l] || [])) {
         const pi = pai_to_idx(p);
@@ -262,11 +333,11 @@ function build_event_tokens(rec, target_l, other_ls) {
         const is_red = (parseInt(p[1]) === 0) ? 1 : 0;
         events.push({
             t_key: t,
-            token: [...tile_oh, t / MAX_GLOBAL_TURNS, 0, 0, is_red, ...target_role, 1, 0],
+            token: [...tile_oh, t / MAX_GLOBAL_TURNS, 0, 0, is_red, ...target_role, 1, 0, 0],
         });
     }
 
-    // --- PASS_CHI events (target_l のみ) ---
+    // --- PASS_CHI events (target_l のみ、danger_level=0) ---
     for (const { p, t } of (rec.chi_passes_l?.[target_l] || [])) {
         const pi = pai_to_idx(p);
         const tile_oh = new Array(N_PAI).fill(0);
@@ -274,7 +345,7 @@ function build_event_tokens(rec, target_l, other_ls) {
         const is_red = (parseInt(p[1]) === 0) ? 1 : 0;
         events.push({
             t_key: t,
-            token: [...tile_oh, t / MAX_GLOBAL_TURNS, 0, 0, is_red, ...target_role, 0, 1],
+            token: [...tile_oh, t / MAX_GLOBAL_TURNS, 0, 0, is_red, ...target_role, 0, 1, 0],
         });
     }
 

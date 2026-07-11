@@ -38,8 +38,10 @@ def main():
     n_out = 0
     n_skip = 0
 
+    tmp_path = OUTPUT_PATH.with_suffix(".tmp.ndjson")
+
     with open(INPUT_PATH, encoding="utf-8") as f_in, \
-         open(OUTPUT_PATH, "w", encoding="utf-8") as f_out:
+         open(tmp_path, "w", encoding="utf-8") as f_out:
 
         while True:
             raw_lines = [f_in.readline() for _ in range(3)]
@@ -86,6 +88,7 @@ def main():
             if n_out % 20000 == 0:
                 print(f"  {n_out} サンプル処理済み", flush=True)
 
+    tmp_path.replace(OUTPUT_PATH)
     print(f"完了: {n_out} サンプル → {OUTPUT_PATH}")
     if n_skip:
         print(f"スキップ: {n_skip} グループ（整合性エラー）")

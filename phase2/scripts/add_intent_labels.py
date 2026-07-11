@@ -146,12 +146,15 @@ def is_sequence_isolated(act_idx: int, visible: list):
 
 def get_riichi_suji(discards_j: list) -> set:
     """
-    リーチ宣言牌（'_'サフィックス）からスジ牌のglobal indexセットを返す。
+    リーチ宣言牌（'*'サフィックス）からスジ牌のglobal indexセットを返す。
     スジペア: n と n±3（同スーツ内、0-indexed で n-3, n+3）
+
+    v45修正: '_'(ツモ切りマーカー)→'*'(リーチ宣言マーカー)。
+    旧版は手出しリーチ('p6*'等)を見落とし94.9%のケースでスジ誤計算していた。
     """
     for t in reversed(discards_j or []):
         ts = str(t)
-        if "_" in ts:
+        if "*" in ts:
             try:
                 decl = tile_str_to_idx(ts)
             except Exception:

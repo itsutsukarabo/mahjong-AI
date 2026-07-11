@@ -10,3 +10,14 @@ phase2/data/features/*
 phase2/models/**/*.pt
 phase2/models/**/*.onnx
 phase2/models/**/*.pkl
+
+# ランタイム生成ファイル (学習・監視ログ)
+*.pid
+*_stderr.log
+*_stdout.log
+*_stdout_*.log
+*_output.log
+**/__pycache__/
+*.pyc
+*.bak
+tmp_clone/server.js

@@ -62,9 +62,12 @@ def process():
     print(f"実装        : {impl}")
     print(f"出力先      : {DST_PATH}")
 
+    # src==dst の場合でも安全に書き込むため一時ファイルに書いてからリネーム
+    tmp_path = DST_PATH.with_suffix(".tmp.ndjson")
+
     t0 = time.time()
     with open(SRC_PATH, encoding="utf-8") as fin, \
-         open(DST_PATH, "w", encoding="utf-8") as fout:
+         open(tmp_path, "w", encoding="utf-8") as fout:
         for i, line in enumerate(fin):
             line = line.strip()
             if not line:
@@ -108,6 +111,8 @@ def process():
                 rate = (i + 1) / elapsed
                 eta = (total - i - 1) / rate
                 print(f"  {i+1}/{total}  {rate:.0f} samples/s  ETA {eta:.0f}s", flush=True)
+
+    tmp_path.replace(DST_PATH)
 
     elapsed = time.time() - t0
     print(f"完了: {elapsed:.1f}s  ({total/elapsed:.0f} samples/s)")

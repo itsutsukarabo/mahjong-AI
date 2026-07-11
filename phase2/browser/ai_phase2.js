@@ -1397,12 +1397,24 @@
         }
 
         // 局面コンテキスト (フィードバック記録用)
+        // state スナップショット: ゲーム状態をフルで保持
         result._context = {
             log_idx,
             current_idx,
             menfeng,
-            turn: [0,1,2,3].reduce((s,l) => s + (state.discards_l[l]||[]).length, 0),
+            turn:      [0,1,2,3].reduce((s,l) => s + (state.discards_l[l]||[]).length, 0),
             remaining: state.remaining,
+            state_snapshot: {
+                discards_l:  state.discards_l.map(d => [...d]),
+                melds_l:     state.melds_l.map(m => [...m]),
+                riichi_l:    [...state.riichi_l],
+                scores:      [...state.scores],
+                baopai:      [...state.baopai],
+                lizhibang:   state.lizhibang,
+                zhuangfeng:  state.zhuangfeng,
+                jushu:       state.jushu,
+                changbang:   state.changbang,
+            },
         };
 
         return result;

@@ -58,12 +58,13 @@ HI_PON_DIM    = 34
 HI_CHI_DIM    = 34
 HI_YAKU_DIM   = 21  # モデルのyaku_head出力次元（特徴量としては使わない）
 
-# ---- 統一イベントトークン形式 (44次元/トークン) ----
+# ---- 統一イベントトークン形式 (45次元/トークン) ----
 # tile_onehot(34) + turn_norm(1) + is_tsumogiri(1) + is_riichi_decl(1) + is_red_five(1)
-# + player_role(4) + event_is_pass_pon(1) + event_is_pass_chi(1)
+# + player_role(4) + event_is_pass_pon(1) + event_is_pass_chi(1) + danger_level_norm(1)
 # player_role: [is_target, is_self, is_other1, is_other2]
-# event: DISCARD=[0,0], PASS_PON=[1,0], PASS_CHI=[0,1]
-HI_TOKEN_DIM = 44
+# event: DISCARD=[0,0,dl/3], PASS_PON=[1,0,0], PASS_CHI=[0,1,0]
+# danger_level_norm: 0=リーチなし, 1/3=現物, 2/3=スジ, 1=無スジ (v45追加)
+HI_TOKEN_DIM = 45
 HI_TOKEN_MAX = 144  # 最大トークン数 (捨て牌~72 + PASSイベント~72)
 
 # ---- Stage-1 モデル入力フォーマット (108次元) ----

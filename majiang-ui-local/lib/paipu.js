@@ -1322,20 +1322,22 @@ module.exports = class Paipu {
                 submit_btn.on('click', () => {
                     const text = textarea.val();
                     if (!text.trim()) return;
-                    // チェッカー結果をコンテキストに含める
-                    const checker_summary = {};
+                    // 全プレイヤーのモデル出力フルをコンテキストに含める
+                    const players_data = {};
                     if (phase2.hand_inference) {
                         for (const p of phase2.hand_inference.players) {
-                            if (p.checkers) {
-                                checker_summary[p.seat_name] = {
-                                    A:  p.checkers.A  ? p.checkers.A.score.toFixed(3)  : 0,
-                                    B2: p.checkers.B2 ? p.checkers.B2.score.toFixed(3) : 0,
-                                    B3: p.checkers.B3 ? p.checkers.B3.score.toFixed(3) : 0,
-                                };
-                            }
+                            players_data[p.seat_name] = {
+                                probs_per_tile: p.probs_per_tile
+                                    ? p.probs_per_tile.map(row => Array.from(row))
+                                    : null,
+                                tatsu_probs: p.tatsu_probs
+                                    ? Array.from(p.tatsu_probs)
+                                    : null,
+                                checkers: p.checkers || null,
+                            };
                         }
                     }
-                    const full_ctx = { ...ctx, checkers: checker_summary };
+                    const full_ctx = { ...ctx, players: players_data };
                     const ok = window.FeedbackLogger.submitUserFeedback(text, full_ctx);
                     if (ok) {
                         textarea.val('');

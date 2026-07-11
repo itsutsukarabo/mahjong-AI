@@ -1,0 +1,21 @@
+{
+  "test_eae": 4.297160622768629,
+  "test_eae_stage": 3.2873485537735707,
+  "test_acc": 0.9111111906141851,
+  "soft_f1": 0.3128,
+  "wait_f1": 0.2999,
+  "wait_hit_rate": 0.3377,
+  "wait_top1_acc": 0.6626,
+  "n_tenpai": 7105,
+  "meld0_eae": 4.9062646004638095,
+  "meld0_n": 42099,
+  "meld1_eae": 1.5414819114584424,
+  "meld1_n": 5540,
+  "meld2_eae": 0.5654914554146402,
+  "meld2_n": 1508,
+  "meld3_eae": 0.15905251730210726,
+  "meld3_n": 179,
+  "best_val_eae": 4.2802,
+  "best_epoch": 165,
+  "stop_reason": "2epoch_nll_rise_EP178"
+}

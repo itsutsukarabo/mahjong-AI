@@ -26,6 +26,8 @@ AVAILABLE_FIXES = [
     'fix_riichi_loss_weight',
     'fix_late_game_weight',
     'fix_wait_logit_penalty',
+    'fix_furiten_penalty',
+    'fix_soft_f1_eval',
 ]
 
 

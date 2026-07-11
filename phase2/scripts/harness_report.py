@@ -2,11 +2,16 @@
 ハーネスレポート: ブラウザのフィードバックログを分析し対応策を提案する。
 
 使い方:
-  C:\ml\venv\Scripts\python.exe phase2/scripts/harness_report.py feedback_log.jsonl
-  C:\ml\venv\Scripts\python.exe phase2/scripts/harness_report.py feedback_log.jsonl --min-records 5
+  # 自動ハーネスログのみ
+  C:\ml\venv\Scripts\python.exe phase2/scripts/harness_report.py harness_log_*.jsonl
 
-出力:
-  弱点ランキング + 対応策の番号メニュー → 選択後に harness_fix.py を起動
+  # ユーザーフィードバック込み
+  C:\ml\venv\Scripts\python.exe phase2/scripts/harness_report.py harness_log_*.jsonl \
+      --user-feedback user_feedback_*.jsonl
+
+  # 対話なし（スキル用）
+  C:\ml\venv\Scripts\python.exe phase2/scripts/harness_report.py harness_log_*.jsonl \
+      --user-feedback user_feedback_*.jsonl --report-only
 """
 import sys
 import io
@@ -18,12 +23,12 @@ import glob
 import subprocess
 from pathlib import Path
 from collections import defaultdict
+from datetime import datetime
 
 # ---- 閾値（feedback_logger.js と同じ値） ----
 THRESHOLD = {'A': 0.05, 'B2': 3.0, 'B3': 0.3}
 
 # ---- 対応策マッピング ----
-# (checker_type, late_game, riichi) → fix_name のルール
 REMEDIATION_MAP = [
     {
         'id':          'fix_impossible_tile_penalty',
@@ -42,7 +47,7 @@ REMEDIATION_MAP = [
     {
         'id':          'fix_riichi_loss_weight',
         'triggers':    ['B2', 'B3'],
-        'description': 'リーチ局面サンプルの loss_weight を 2.0 に設定',
+        'description': 'リーチ後局面サンプルの loss_weight を 2.0 に設定',
         'detail':      'データ再生成不要。リーチ局面の学習を強化。→ B2/B3 改善',
         'pipeline_rerun': False,
     },
@@ -60,7 +65,21 @@ REMEDIATION_MAP = [
         'detail':      'データ再生成不要。wait head の矛盾を直接ペナルティ化。→ B3 改善',
         'pipeline_rerun': False,
     },
+    {
+        'id':          'fix_furiten_penalty',
+        'triggers':    ['B3'],
+        'description': 'フリテン系ペナルティ: 自捨て牌 + リーチ後スルー牌の待ち確率を抑制',
+        'detail':      'テンパイサンプルの自捨て牌・リーチ後スルー牌に絡む tatsu をペナルティ化。データ再生成不要。→ 待ち推定精度向上',
+        'pipeline_rerun': False,
+    },
 ]
+
+# ---- ユーザーFBテキスト → checker_type のキーワードマッピング ----
+_TEXT_KEYWORDS = {
+    'A':  ['枯れ', '残り0', '残り枚数', 'もうない', '切れてる', '全部出た'],
+    'B2': ['リーチ後', 'リーチしてる', '収束', 'エントロピー', '読めない', 'ばらけ'],
+    'B3': ['ツモ切り', '待ちじゃない', '待ちが違う', '矛盾', 'ツモ切った', '待ちの牌'],
+}
 
 
 def load_logs(paths):
@@ -76,6 +95,30 @@ def load_logs(paths):
                 except json.JSONDecodeError:
                     pass
     return records
+
+
+def load_user_feedbacks(paths):
+    records = []
+    for p in paths:
+        with open(p, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    return records
+
+
+def infer_types_from_text(text):
+    """ユーザーコメントのキーワードからチェッカータイプを推定する。"""
+    found = set()
+    for ck, keywords in _TEXT_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            found.add(ck)
+    return found
 
 
 def bucket_turn(turn):
@@ -98,18 +141,13 @@ def analyze(records, min_records):
         scores = [r[checker_key]['score'] for r in violations]
         avg = sum(scores) / len(scores)
 
-        # グルーピング: (turn_bucket, riichi)
         groups = defaultdict(list)
         for r in violations:
-            tb     = bucket_turn(r.get('turn', 0))
-            riichi = r.get('B2', {}).get('score', 0) > 0 or any(
-                r.get(checker_key, {}).get('flagged', []))
+            tb = bucket_turn(r.get('turn', 0))
             groups[(tb,)].append(r[checker_key]['score'])
 
         group_list = []
         for key, sc_list in sorted(groups.items(), key=lambda x: -sum(x[1])/len(x[1])):
-            if len(sc_list) < 1:
-                continue
             group_list.append({
                 'label': key[0],
                 'avg':   sum(sc_list) / len(sc_list),
@@ -136,7 +174,7 @@ def print_report(records, stats, active_types):
     n = len(records)
     print()
     print('=' * 50)
-    print('  ハーネス弱点レポート')
+    print('  ハーネス弱点レポート（自動チェッカー）')
     print(f'  総ログ数: {n} 件')
     print('=' * 50)
 
@@ -154,20 +192,80 @@ def print_report(records, stats, active_types):
             print(f'  (違反なし)')
             continue
         print(f'\n▼ {label}: {desc}')
-        print(f'  違反件数: {s["count"]} / {len(records)} 件  avg_score={s["avg"]:.3f}')
+        print(f'  違反件数: {s["count"]} / {n} 件  avg_score={s["avg"]:.3f}')
         for g in s['groups'][:4]:
             st = stars(g['avg'], THRESHOLD[ck])
             print(f'    {g["label"]:<14}  avg={g["avg"]:.3f}  n={g["n"]}  {st}')
         rankings.append((ck, s['avg'], s['count']))
 
-    rankings.sort(key=lambda x: -x[1])
+    if rankings:
+        rankings.sort(key=lambda x: -x[1])
+        print()
+        print('=' * 50)
+        print('最重要改善ターゲット:')
+        for rank, (ck, avg, cnt) in enumerate(rankings[:3], 1):
+            _, desc = checker_meta[ck]
+            print(f'  {rank}位: {ck} {desc}  (avg={avg:.3f}, n={cnt})')
+        print('=' * 50)
+
+
+def print_user_feedbacks(feedbacks):
+    if not feedbacks:
+        return
     print()
     print('=' * 50)
-    print('最重要改善ターゲット:')
-    for rank, (ck, avg, cnt) in enumerate(rankings[:3], 1):
-        _, desc = checker_meta[ck]
-        print(f'  {rank}位: {ck} {desc}  (avg={avg:.3f}, n={cnt})')
+    print(f'  ユーザーフィードバック ({len(feedbacks)} 件)')
     print('=' * 50)
+    for i, r in enumerate(feedbacks, 1):
+        ts_val = r.get('ts', 0)
+        ts_str = datetime.fromtimestamp(ts_val / 1000).strftime('%m/%d %H:%M') if ts_val else '?'
+        ctx = r.get('ctx', {})
+        turn      = ctx.get('turn', '?')
+        remaining = ctx.get('remaining', '?')
+
+        # 各プレイヤーのチェッカースコア
+        checker_parts = []
+        players = ctx.get('players', {})
+        for seat, pd in players.items():
+            ck = pd.get('checkers') or {}
+            a_s  = (ck.get('A')  or {}).get('score', 0)
+            b2_s = (ck.get('B2') or {}).get('score', 0)
+            b3_s = (ck.get('B3') or {}).get('score', 0)
+            if any([a_s > 0.02, b2_s > 0.5, b3_s > 0.1]):
+                checker_parts.append(f'{seat}: A={a_s:.2f} B2={b2_s:.1f} B3={b3_s:.2f}')
+
+        # 場況
+        ss = ctx.get('state_snapshot', {})
+        riichi_l = ss.get('riichi_l', [])
+        riichi_str = 'リーチ中' if any(riichi_l) else ''
+
+        print(f'\n  [{i}] {ts_str}  巡目={turn}  残牌={remaining}  {riichi_str}')
+        if checker_parts:
+            print(f'       チェッカー: {" / ".join(checker_parts)}')
+        print(f'       コメント: "{r.get("text", "")}"')
+
+        # テキストからのキーワード推定
+        text_types = infer_types_from_text(r.get('text', ''))
+        if text_types:
+            print(f'       キーワード推定 → {", ".join(sorted(text_types))} 系の問題の可能性')
+
+
+def analyze_user_feedbacks(feedbacks):
+    """ユーザーFBから能動的なチェッカータイプを推定する。"""
+    active_from_text = set()
+    for r in feedbacks:
+        active_from_text |= infer_types_from_text(r.get('text', ''))
+        # プレイヤーのチェッカースコアも参照
+        ctx = r.get('ctx', {})
+        for seat, pd in ctx.get('players', {}).items():
+            ck = pd.get('checkers') or {}
+            if (ck.get('A')  or {}).get('score', 0) > THRESHOLD['A']:
+                active_from_text.add('A')
+            if (ck.get('B2') or {}).get('score', 0) > THRESHOLD['B2']:
+                active_from_text.add('B2')
+            if (ck.get('B3') or {}).get('score', 0) > THRESHOLD['B3']:
+                active_from_text.add('B3')
+    return active_from_text
 
 
 def suggest_fixes(active_types):
@@ -249,37 +347,86 @@ def run_fixes(selected, base_version=38, target_version=39):
     subprocess.run(cmd, check=False)
 
 
-def main():
-    parser = argparse.ArgumentParser(description='ハーネスフィードバックレポート')
-    parser.add_argument('logs', nargs='+', help='feedback_log.jsonl (glob可)')
-    parser.add_argument('--min-records', type=int, default=3,
-                        help='集計に必要な最小違反件数 (デフォルト: 3)')
-    parser.add_argument('--base-version',   type=int, default=38)
-    parser.add_argument('--target-version', type=int, default=39)
-    args = parser.parse_args()
-
-    # glob展開
+def _expand_paths(patterns):
     paths = []
-    for pattern in args.logs:
+    for pattern in (patterns or []):
         expanded = glob.glob(pattern)
         if expanded:
             paths.extend(expanded)
         elif Path(pattern).exists():
             paths.append(pattern)
-    if not paths:
-        print(f'ERROR: ログファイルが見つかりません: {args.logs}')
+    return paths
+
+
+def main():
+    parser = argparse.ArgumentParser(description='ハーネスフィードバックレポート')
+    parser.add_argument('logs', nargs='*', help='harness_log_*.jsonl (glob可、省略可)')
+    parser.add_argument('--user-feedback', nargs='+', metavar='FILE',
+                        help='user_feedback_*.jsonl (glob可)')
+    parser.add_argument('--min-records',    type=int, default=3)
+    parser.add_argument('--base-version',   type=int, default=38)
+    parser.add_argument('--target-version', type=int, default=39)
+    parser.add_argument('--report-only',    action='store_true',
+                        help='レポート表示のみ。対話メニューを起動しない（スキル用）')
+    args = parser.parse_args()
+
+    # 自動ハーネスログ
+    harness_paths = _expand_paths(args.logs)
+    records = []
+    if harness_paths:
+        print(f'自動ハーネスログ: {harness_paths}')
+        records = load_logs(harness_paths)
+
+    # ユーザーフィードバック
+    fb_paths = _expand_paths(args.user_feedback)
+    feedbacks = []
+    if fb_paths:
+        print(f'ユーザーFB: {fb_paths}')
+        feedbacks = load_user_feedbacks(fb_paths)
+
+    if not records and not feedbacks:
+        print('ERROR: ログファイルが見つかりません。')
+        print('  自動ログ: harness_log_*.jsonl を指定するか')
+        print('  ユーザーFB: --user-feedback user_feedback_*.jsonl を指定してください。')
         sys.exit(1)
 
-    print(f'ログファイル: {paths}')
-    records = load_logs(paths)
-    if not records:
-        print('ERROR: 有効なレコードが0件です。')
-        sys.exit(1)
+    # --- 自動ハーネス解析 ---
+    active_types = set()
+    if records:
+        stats, active_types = analyze(records, args.min_records)
+        print_report(records, stats, active_types)
+    else:
+        print('\n(自動ハーネスログなし)')
 
-    stats, active_types = analyze(records, args.min_records)
-    print_report(records, stats, active_types)
+    # --- ユーザーフィードバック表示 ---
+    if feedbacks:
+        print_user_feedbacks(feedbacks)
+        fb_active = analyze_user_feedbacks(feedbacks)
+        if fb_active:
+            new_types = fb_active - active_types
+            if new_types:
+                print(f'\n  ユーザーFBから追加検出: {", ".join(sorted(new_types))}')
+            active_types |= fb_active
+    else:
+        print('\n(ユーザーフィードバックなし)')
+
+    # --- 対応策の提案 ---
     candidates = suggest_fixes(active_types)
-    selected   = interactive_menu(candidates)
+
+    if args.report_only:
+        # スキルから呼ばれた場合はメニューを表示して終了
+        print()
+        print('=' * 50)
+        print('提案される対応策:')
+        for i, fix in enumerate(candidates, 1):
+            rerun = ' ※データ再生成必要' if fix['pipeline_rerun'] else ''
+            print(f'  [{i}] {fix["id"]}{rerun}')
+            print(f'      → {fix["description"]}')
+        print('=' * 50)
+        print('(--report-only モード: 対話なし)')
+        return
+
+    selected = interactive_menu(candidates)
     run_fixes(selected, args.base_version, args.target_version)
 
 
