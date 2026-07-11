@@ -13,6 +13,7 @@ phase2/models/**/*.pkl
 
 # ランタイム生成ファイル (学習・監視ログ)
 *.pid
+*.log
 *_stderr.log
 *_stdout.log
 *_stdout_*.log

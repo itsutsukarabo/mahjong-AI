@@ -1,0 +1,26 @@
+{"epoch": 1, "val_eae": 16.1803, "val_acc": 0.704, "shanten_acc": 0.7806, "composite": 0.4084, "log_sigma": {"nll": -0.117, "sum": -0.056, "cross": -0.456, "red_ce": -0.411, "red_cons": -0.441, "block": -0.415, "wait": -0.437, "shanten": -0.482, "retreat": -0.341, "push": -0.399, "furiten": -0.441, "yaku": -0.437}, "soft_f1": null, "wait_f1": 0.0, "note": "stdout復元: nll=0.9454"}
+{"epoch": 2, "val_eae": 16.2661, "val_acc": 0.7093, "shanten_acc": 0.7995, "composite": null}
+{"epoch": 3, "val_eae": 16.1635, "val_acc": 0.7094, "shanten_acc": 0.8171, "composite": null, "log_sigma": {"nll": -0.374, "sum": -0.590, "cross": -1.387, "red_ce": null, "red_cons": null, "block": -0.694, "wait": -1.358, "shanten": -0.906, "retreat": null, "push": null, "furiten": null, "yaku": null}}
+{"epoch": 4, "val_eae": 16.2544, "val_acc": 0.7097, "shanten_acc": 0.8165, "composite": null}
+{"epoch": 5, "val_eae": 16.1968, "val_acc": 0.7097, "shanten_acc": 0.8261, "composite": null, "log_sigma": {"nll": -0.377, "sum": -1.256, "cross": -2.156, "block": -0.720, "wait": -2.119, "shanten": -1.008}}
+{"epoch": 6, "val_eae": 16.1471, "val_acc": 0.7099, "shanten_acc": 0.832, "composite": null}
+{"epoch": 7, "val_eae": 16.1106, "val_acc": 0.7096, "shanten_acc": 0.8407, "composite": null}
+{"epoch": 8, "val_eae": 16.1019, "val_acc": 0.7098, "shanten_acc": 0.8427, "composite": null}
+{"epoch": 9, "val_eae": 15.9935, "val_acc": 0.7083, "shanten_acc": 0.8484, "composite": null}
+{"epoch": 10, "val_eae": 15.9573, "val_acc": 0.707, "shanten_acc": 0.8439, "composite": null, "log_sigma": {"nll": -0.352, "sum": -2.679, "cross": -3.819, "block": -0.748, "wait": -3.720, "shanten": -1.155}}
+{"epoch": 11, "val_eae": 15.944, "val_acc": 0.7064, "shanten_acc": 0.852, "composite": null}
+{"epoch": 12, "val_eae": 15.909, "val_acc": 0.7048, "shanten_acc": 0.8488, "composite": null}
+{"epoch": 13, "val_eae": 15.879, "val_acc": 0.7033, "shanten_acc": 0.8529, "composite": null}
+{"epoch": 14, "val_eae": 15.8189, "val_acc": 0.6994, "shanten_acc": 0.8535, "composite": null}
+{"epoch": 15, "val_eae": 15.7799, "val_acc": 0.6948, "shanten_acc": 0.8533, "composite": null, "log_sigma": {"nll": -0.311, "sum": -3.632, "cross": -5.426, "block": -0.766, "wait": -5.015, "shanten": -1.211}}
+{"epoch": 16, "val_eae": 15.75, "val_acc": 0.6909, "shanten_acc": 0.839, "composite": null}
+{"epoch": 17, "val_eae": 15.7036, "val_acc": 0.6895, "shanten_acc": 0.8523, "composite": null}
+{"epoch": 18, "val_eae": 15.7144, "val_acc": 0.6905, "shanten_acc": 0.8567, "composite": null}
+{"epoch": 19, "val_eae": 15.7028, "val_acc": 0.689, "shanten_acc": 0.8518, "composite": null}
+{"epoch": 20, "val_eae": 15.7008, "val_acc": 0.6876, "shanten_acc": 0.8574, "composite": 0.464, "log_sigma": {"nll": -0.2895, "sum": -4.2164, "cross": -7.223, "red_ce": -1.1202, "red_cons": -7.2049, "block": -0.7646, "wait": -5.1918, "shanten": -1.2349, "retreat": -0.6939, "push": -0.7116, "furiten": -7.124, "yaku": -3.6862}, "soft_f1": 0.2987, "wait_f1": 0.2824, "wait_hit_rate": 0.3219, "wait_top1_acc": 0.6311, "n_tenpai": 7040}
+{"epoch": 21, "val_eae": 15.6413, "val_acc": 0.6815, "shanten_acc": 0.8602, "composite": 0.4656, "log_sigma": {"nll": -0.2822, "sum": -4.304, "cross": -7.5047, "red_ce": -1.1262, "red_cons": -7.4869, "block": -0.7717, "wait": -5.1753, "shanten": -1.2685, "retreat": -0.6993, "push": -0.7269, "furiten": -7.4082, "yaku": -3.7397}, "soft_f1": 0.0633, "wait_f1": 0.0589, "wait_hit_rate": 0.0732, "wait_top1_acc": 0.3049, "n_tenpai": 7040}
+{"epoch": 22, "val_eae": 15.6058, "val_acc": 0.6777, "shanten_acc": 0.8618, "composite": 0.4679, "log_sigma": {"nll": -0.2729, "sum": -4.4231, "cross": -7.8218, "red_ce": -1.1308, "red_cons": -8.0026, "block": -0.7809, "wait": -5.1412, "shanten": -1.2732, "retreat": -0.6915, "push": -0.7162, "furiten": -7.726, "yaku": -3.7873}, "soft_f1": 0.0654, "wait_f1": 0.0628, "wait_hit_rate": 0.0777, "wait_top1_acc": 0.3087, "n_tenpai": 7040}
+{"epoch": 23, "val_eae": 15.5771, "val_acc": 0.6774, "shanten_acc": 0.8499, "composite": 0.4537, "log_sigma": {"nll": -0.2685, "sum": -4.3217, "cross": -8.1673, "red_ce": -1.0958, "red_cons": -8.154, "block": -0.7509, "wait": -5.0663, "shanten": -1.2427, "retreat": -0.7022, "push": -0.7248, "furiten": -8.0797, "yaku": -3.8177}, "soft_f1": 0.0423, "wait_f1": 0.0391, "wait_hit_rate": 0.0498, "wait_top1_acc": 0.2686, "n_tenpai": 7040}
+{"epoch": 24, "val_eae": 15.5879, "val_acc": 0.6808, "shanten_acc": 0.8449, "composite": 0.4453, "log_sigma": {"nll": -0.2736, "sum": -4.3756, "cross": -8.6111, "red_ce": -1.0728, "red_cons": -8.5978, "block": -0.7425, "wait": -4.9558, "shanten": -1.2013, "retreat": -0.712, "push": -0.706, "furiten": -8.5269, "yaku": -3.707}, "soft_f1": 0.0266, "wait_f1": 0.0231, "wait_hit_rate": 0.03, "wait_top1_acc": 0.2518, "n_tenpai": 7040}
+{"epoch": 25, "val_eae": 15.6047, "val_acc": 0.68, "shanten_acc": 0.8613, "composite": null}
+{"epoch": 26, "val_eae": 15.5604, "val_acc": 0.6754, "shanten_acc": 0.8558, "composite": null, "log_sigma": {"nll": -0.259, "sum": -4.486, "cross": -9.234, "block": -0.752, "wait": -4.910, "shanten": -1.255}}

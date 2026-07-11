@@ -1,0 +1,22 @@
+{
+  "fixed_dim": 674,
+  "token_dim": 44,
+  "disc_d": 128,
+  "disc_nhead": 4,
+  "disc_layers": 3,
+  "d_model": 256,
+  "nhead": 4,
+  "num_layers": 3,
+  "n_pai": 34,
+  "n_count_cls": 5,
+  "n_players": 3,
+  "n_blocks": 134,
+  "dropout": 0.1,
+  "lr": 0.0005,
+  "weight_decay": 0.0001,
+  "batch_size": 128,
+  "epochs": 200,
+  "early_stop_patience": 15,
+  "n_tatsu": 113,
+  "n_shanten_cls": 3
+}
