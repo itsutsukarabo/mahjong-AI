@@ -15,6 +15,7 @@ v45 からの変更:
 """
 
 import gc
+import io
 import json
 import math
 import subprocess
@@ -716,7 +717,7 @@ class HandInferenceV37(nn.Module):
 def train_epoch(model, loader, optimizer, device,
                 pos_weight_block, pos_weight_wait):
     model.train()
-    total_ce=0.0
+    total_ce=0.0; total_agg=0.0
     count_vals=torch.arange(model.n_count_cls, device=device, dtype=torch.float32)
     five_idx=model.red_tile_idx
 
@@ -827,9 +828,10 @@ def train_epoch(model, loader, optimizer, device,
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_NORM)
         optimizer.step()
-        total_ce += loss_nll.item() * len(features)
+        total_ce  += loss_nll.item()        * len(features)
+        total_agg += loss_aggression.item() * len(features)
 
-    return total_ce / len(loader.dataset)
+    return total_ce / len(loader.dataset), total_agg / len(loader.dataset)
 
 
 @torch.no_grad()
@@ -953,8 +955,12 @@ def save_aggression_context(model, loader, device, save_path):
 
 def main():
     resume = "--resume" in sys.argv
+    stop_after = None
+    for i, a in enumerate(sys.argv):
+        if a == "--stop-after" and i + 1 < len(sys.argv):
+            stop_after = int(sys.argv[i + 1])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"device: {device}  resume: {resume}", flush=True)
+    print(f"device: {device}  resume: {resume}  stop_after: {stop_after}", flush=True)
 
     ndjson_path = DATA_DIR / "hand_inference_v46.ndjson"
     if not ndjson_path.exists():
@@ -1024,7 +1030,8 @@ def main():
     meld_sum = feat_np[:,:,MELD_CHI_OFFSET] + feat_np[:,:,MELD_PON_OFFSET] + feat_np[:,:,MELD_KAN_OFFSET]
     keep = (lab_sum.sum(axis=1) > 0) | (meld_sum.sum(axis=1) > 0)
     valid_idx = np.where(keep)[0]
-    print(f"有効サンプル: {len(valid_idx)}")
+    n_valid   = len(valid_idx)
+    print(f"有効サンプル: {n_valid}")
 
     # pos_weight 計算 (有効サンプルのみで集計)
     pw_block = min((1-float(lblk_np[valid_idx].mean()))/(float(lblk_np[valid_idx].mean())+1e-9), POS_WEIGHT_MAX)
@@ -1091,6 +1098,7 @@ def main():
     )
     scheduler  = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", patience=4)
     best_eae   = math.inf; patience_cnt = 0; start_epoch = 1
+    prev_train_nll = math.inf; nll_rise_cnt = 0
 
     ckpt_path = MODEL_DIR / "checkpoint.pt"
     if resume and ckpt_path.exists() and (MODEL_DIR/"train_log.json").exists():
@@ -1102,12 +1110,13 @@ def main():
         best_eae   = min((e.get("val_eae", math.inf) for e in logs), default=math.inf)
         start_epoch = max(e["epoch"] for e in logs) + 1
         patience_cnt = 0
+        prev_train_nll = logs[-1].get("train_nll", math.inf) if logs else math.inf
         print(f"resume: epoch {start_epoch}  best_eae={best_eae:.4f}", flush=True)
     else:
         print("フルスクラッチ学習開始", flush=True)
 
     for epoch in range(start_epoch, CONFIG["epochs"]+1):
-        train_nll                      = train_epoch(model, train_loader, optimizer, device,
+        train_nll, train_agg_loss      = train_epoch(model, train_loader, optimizer, device,
                                                      pos_weight_block, pos_weight_wait)
         torch.cuda.empty_cache()
         val_eae, val_eae_stage, val_acc = eval_epoch(model, val_loader, device)
@@ -1119,18 +1128,31 @@ def main():
         scheduler.step(val_eae)
 
         log_entry = {"epoch": epoch,
+                     "train_nll": round(train_nll, 4),
+                     "train_agg_loss": round(train_agg_loss, 4),
                      "val_eae": round(val_eae, 4),
                      "val_eae_stage": round(val_eae_stage, 4),
                      "val_acc": round(val_acc, 4),
                      "shanten_acc": round(shanten_acc, 4),
                      "composite": round(composite, 4),
                      **wait_m, **agg_m}
-        print(f"epoch {epoch:3d}  nll={train_nll:.4f}  eae={val_eae:.4f}  eae_stage={val_eae_stage:.4f}"
+        print(f"epoch {epoch:3d}  nll={train_nll:.4f}  agg_loss={train_agg_loss:.4f}"
+              f"  eae={val_eae:.4f}  eae_stage={val_eae_stage:.4f}"
               f"  acc={val_acc:.4f}  shanten={shanten_acc:.4f}"
               f"  wait_f1={wait_m['wait_f1']:.4f}  composite={composite:.4f}"
               f"  agg_sign={agg_m['agg_sign_acc']:.4f}", flush=True)
         with open(MODEL_DIR/"train_log.json", "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry) + "\n")
+
+        # 安全弁: train_nll 2epoch連続上昇で停止
+        if train_nll > prev_train_nll:
+            nll_rise_cnt += 1
+            if nll_rise_cnt >= 2:
+                print(f"[安全弁] train_nll {nll_rise_cnt}epoch連続上昇 ({prev_train_nll:.4f}->{train_nll:.4f}) 停止", flush=True)
+                break
+        else:
+            nll_rise_cnt = 0
+        prev_train_nll = train_nll
 
         wait_for_cool()
         cool_after_epoch()
@@ -1149,6 +1171,16 @@ def main():
             patience_cnt += 1
             if patience_cnt >= CONFIG["early_stop_patience"]:
                 print("early stopping"); break
+
+        # ep50/ep100: aggression context 中間保存（中間報告用）
+        if epoch in (50, 100):
+            mid_path = MODEL_DIR / f"eval_aggression_context_ep{epoch}.npz"
+            save_aggression_context(model, val_loader, device, mid_path)
+            print(f"[mid-report] ep{epoch} aggression context saved", flush=True)
+
+        if stop_after and epoch >= stop_after:
+            print(f"[stop-after] epoch {epoch} 完了で停止", flush=True)
+            break
 
     # テスト評価
     model.load_state_dict(torch.load(MODEL_DIR/"model.pt", map_location=device, weights_only=True))
@@ -1178,24 +1210,33 @@ def main():
             logits,_,red_logits,block_logits,wait_logits,_,shanten_logits,_ = self.m(features, disc_tokens, disc_mask)
             return logits, red_logits, block_logits, wait_logits, shanten_logits
 
-    torch.onnx.export(
-        _Wrap(model), (dummy_feat, dummy_tok, dummy_mask),
-        str(MODEL_DIR/"model.onnx"),
-        input_names=["features", "disc_tokens", "disc_mask"],
-        output_names=["logits","red_logits","block_logits","wait_logits","shanten_logits"],
-        dynamic_axes={
-            "features":  {0:"batch"},
-            "disc_tokens": {0:"batch", 3:"n_tokens"},
-            "disc_mask":   {0:"batch", 3:"n_tokens"},
-            "logits":    {0:"batch"}, "red_logits":  {0:"batch"},
-            "block_logits": {0:"batch"}, "wait_logits": {0:"batch"},
-            "shanten_logits": {0:"batch"},
-        },
-        opset_version=17,
-    )
-    print(f"\nONNX保存: {MODEL_DIR/'model.onnx'}")
-    print("入力: features(1,3,674), disc_tokens(1,3,N,45), disc_mask(1,3,N)")
-    print("出力: logits(1,3,34,5) red_logits(1,3,3,2) block_logits(1,3,N_BLOCKS) wait_logits(1,3,113) shanten_logits(1,3,3)")
+    try:
+        _orig_stdout = sys.stdout
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
+        torch.onnx.export(
+            _Wrap(model), (dummy_feat, dummy_tok, dummy_mask),
+            str(MODEL_DIR/"model.onnx"),
+            input_names=["features", "disc_tokens", "disc_mask"],
+            output_names=["logits","red_logits","block_logits","wait_logits","shanten_logits"],
+            dynamic_axes={
+                "features":    {0: "batch"},
+                "disc_tokens": {0: "batch", 2: "seq_len"},   # dim2=N_tokens (dim3=TOKEN_DIM=45固定)
+                "disc_mask":   {0: "batch", 2: "seq_len"},   # dim2=N_tokens
+                "logits":         {0: "batch"},
+                "red_logits":     {0: "batch"},
+                "block_logits":   {0: "batch"},
+                "wait_logits":    {0: "batch"},
+                "shanten_logits": {0: "batch"},
+            },
+            opset_version=17,
+        )
+        sys.stdout = _orig_stdout
+        print(f"\nONNX saved: {MODEL_DIR/'model.onnx'}")
+        print("input: features(1,3,674), disc_tokens(1,3,N,45), disc_mask(1,3,N)")
+        print("output: logits(1,3,34,5) red_logits(1,3,3,2) block_logits(1,3,N_BLOCKS) wait_logits(1,3,113) shanten_logits(1,3,3)")
+    except Exception as e:
+        sys.stdout = _orig_stdout
+        print(f"\n[WARN] ONNX export failed: {e}")
 
 
 if __name__ == "__main__":

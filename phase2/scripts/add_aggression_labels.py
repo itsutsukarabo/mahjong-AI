@@ -684,10 +684,121 @@ def process(limit: int = None):
     else:
         print("  (該当なし)")
 
+# ---- 書き込みモード: zip(src, states) → dst ----
+def _compute_delta_shanten_fast(act_idx: int, counts14: list, n_meld: int):
+    """
+    delta_shanten のみ計算 (ukeire_change 省略の高速版)。
+    ukeire_change は None を返す。
+    ΔSH=0 & uk<0 の微細防御ケースは中立(0)に近似。寄与は W_UKEIRE_NEG=0.05 と小さい。
+    """
+    sh_best = 99
+    tmp = counts14[:]
+    for t in range(34):
+        if tmp[t] > 0:
+            tmp[t] -= 1
+            sh = compute_shanten(tmp, n_meld)
+            if sh < sh_best:
+                sh_best = sh
+            tmp[t] += 1
+    counts_after = counts14[:]
+    counts_after[act_idx] -= 1
+    sh_after = compute_shanten(counts_after, n_meld)
+    return sh_after - sh_best, None   # uk_change=None → 0 として扱われる
+
+
+def write_mode(src_path: Path, states_path: Path, dst_path: Path):
+    """
+    v46.ndjson 生成: v45.ndjson と states_v22.ndjson を 1-to-1 zip して
+    各サンプルに label_aggression を付与。label_retreat / label_push は除去。
+    tmp→rename で自己上書き回避。
+    ukeire_change 省略 (高速版: 約4分, 完全版は27分): ΔSH=0の微細防御のみ影響軽微。
+    """
+    stats = defaultdict(int)
+    tmp_path = dst_path.with_suffix(".tmp.ndjson")
+    lno = 0
+
+    with open(src_path, encoding="utf-8") as src_f, \
+         open(states_path, encoding="utf-8") as st_f, \
+         open(tmp_path, "w", encoding="utf-8") as out_f:
+
+        for lno, (src_line, st_line) in enumerate(zip(src_f, st_f), 1):
+            hi  = json.loads(src_line)
+            rec = json.loads(st_line)
+
+            action = rec.get("action", "")
+            act_idx = tile_str_to_idx(str(action)) if action else -1
+
+            if act_idx < 0:
+                agg = 0.0
+                stats["skip_no_action"] += 1
+            else:
+                l          = rec["l"]
+                riichi_l   = rec["riichi_l"]
+                discards_l = rec["discards_l"]
+                melds_l    = rec["melds_l"]
+                shanten_l  = rec["shanten_l"]
+                baopai     = rec.get("baopai", []) or []
+                zhuangfeng = rec.get("zhuangfeng", 0)
+                hand_str   = rec["hands_l"][l]
+
+                dl       = compute_danger_level(act_idx, l, riichi_l, discards_l)
+                dora_set = build_dora_set(baopai)
+                mt       = compute_meld_threat(l, melds_l, riichi_l, baopai, zhuangfeng)
+                tv       = compute_tile_value(act_idx, action, dora_set)
+
+                try:
+                    counts14 = parse_hand(hand_str)
+                    n_meld   = sum(1 for m in (melds_l[l] or []) if m)
+                    if counts14[act_idx] <= 0:
+                        agg = 0.0
+                        stats["skip_act_not_in_hand"] += 1
+                    else:
+                        delta_sh, uk_change = _compute_delta_shanten_fast(
+                            act_idx, counts14, n_meld)
+
+                        riichi_others = [j for j in range(4) if j != l and riichi_l[j]]
+                        vis_ext = _build_visible_ext(discards_l, melds_l, hand_str)
+                        post_rd = _get_post_riichi_discards(discards_l, riichi_l)
+                        nc      = is_ryanmen_nochance(act_idx, vis_ext, post_rd, riichi_others)
+
+                        has_safe = compute_has_safe_tile(
+                            l, counts14, riichi_l, discards_l, melds_l, shanten_l)
+
+                        agg = compute_aggression(dl, nc, mt, delta_sh, uk_change, tv, has_safe)
+                        stats["ok"] += 1
+                except Exception:
+                    agg = 0.0
+                    stats["skip_error"] += 1
+
+            hi["label_aggression"] = round(agg, 4)
+            hi.pop("label_retreat", None)
+            hi.pop("label_push", None)
+            out_f.write(json.dumps(hi, ensure_ascii=False) + "\n")
+
+            if lno % 20000 == 0:
+                print(f"  {lno:,} / 164,414 ...", flush=True)
+
+    tmp_path.replace(dst_path)
+    ok = stats["ok"]
+    print(f"\n完了: {dst_path}")
+    print(f"  総行={lno:,}  ok={ok:,}  スキップ={lno - ok:,}")
+    print(f"  内訳: {dict(stats)}")
+
+
 if __name__ == "__main__":
     args  = sys.argv[1:]
-    limit = None
+    opts  = {}
     for i, a in enumerate(args):
-        if a == "--check" and i + 1 < len(args):
-            limit = int(args[i + 1])
-    process(limit=limit)
+        if a.startswith("--") and i + 1 < len(args) and not args[i+1].startswith("--"):
+            opts[a[2:]] = args[i + 1]
+        elif a.startswith("--"):
+            opts[a[2:]] = True
+
+    if "write" in opts:
+        src_p    = Path(opts.get("src",    STATES_PATH.parent.parent / "features" / "hand_inference_v45.ndjson"))
+        states_p = Path(opts.get("states", STATES_PATH))
+        dst_p    = Path(opts.get("dst",    STATES_PATH.parent.parent / "features" / "hand_inference_v46.ndjson"))
+        write_mode(src_p, states_p, dst_p)
+    else:
+        limit = int(opts["check"]) if "check" in opts else None
+        process(limit=limit)
