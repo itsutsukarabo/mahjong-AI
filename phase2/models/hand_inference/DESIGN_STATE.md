@@ -511,3 +511,125 @@ python phase2/train/train_hand_inference_v46.py --eval-only \
   `v39〜v44実験記録追加`、`migration: 移行用zip・チェックサム・手順書追加`）。
   pushを確認せずcloneしていた場合、これらのコミット（v46の学習成果本体を含む）を
   取りこぼす可能性があった。
+
+---
+
+## v46 ONNXエクスポート: aggression_logit 欠落バグと修正（2026-07-18）
+
+### 真因
+
+`train_hand_inference_v46.py` の `main()` 末尾に埋め込まれたONNXエクスポート処理
+（学習完走時に自動実行される）の `_Wrap.forward()` が、モデルの `forward()` が返す
+8つの戻り値のうち5番目 `aggression_logit` を `_` で握り潰していた:
+
+```python
+# train_hand_inference_v46.py:1210（バグ）
+logits,_,red_logits,block_logits,wait_logits,_,shanten_logits,_ = self.m(features, disc_tokens, disc_mask)
+return logits, red_logits, block_logits, wait_logits, shanten_logits  # aggressionが無い
+```
+
+`forward()` の実際の戻り値順序（`train_hand_inference_v46.py:712`）:
+`logits, logits_raw, red_logits, block_logits, wait_logits, aggression_logit, shanten_logits, yaku_logits`
+（5番目=aggression_logit、`_Wrap`はこの位置を`_`で捨てていた）。
+
+既存の `phase2/models/hand_inference/v46/model.onnx` をバイナリ文字列検索で確認した結果、
+出力ノード名は `logits, red_logits, block_logits, wait_logits, shanten_logits` の5つのみで
+`aggression_logit` は存在しないことを確認済み（推論は実行せず静的確認）。
+
+### 修正
+
+`phase2/scripts/export_onnx_v46.py` を新規作成し、`aggression_logit` を出力に追加した
+6出力（`logits, red_logits, block_logits, wait_logits, aggression_logit, shanten_logits`）
+でモデル本体（`model.pt`、best val_eae=ep185相当のstate_dict）から再エクスポート。
+既存の `model.onnx` は上書きせず、別名 `model_aggression_candidate.onnx` として出力。
+
+検証（ダミー入力・実データ1サンプルの両方でPyTorch出力とONNX出力を比較）:
+全6出力の最大誤差 < 1e-5、aggression値は範囲内(-1〜+1)、実データサンプルでは
+PyTorchとONNXの差が7.45e-09（実質一致）。
+
+---
+
+## フロントエンド v46 対応（2026-07-18）
+
+### 背景
+
+`phase2/browser/ai_phase2.js`（ブラウザ側ONNX推論）は v38 固定（695次元固定特徴 +
+44次元/トークン、`hand_inference/v38/model.onnx` 参照）のままで、v45/v46 のデータ
+仕様変更（`danger_level` 特徴追加によるtoken_dim 44→45、`yaku_probs`廃止による
+fixed_dim 695→674）に未対応だった。
+
+### 実施内容
+
+1. **674/45次元対応の特徴量エンジンをJS側に新規実装**
+   `make_hi_features_v46()` / `make_discard_tokens_v46()` / `build_event_tokens_v46()` /
+   `_danger_level_v46()` を `phase2/browser/ai_phase2.js` に追加（既存のv38関数は
+   比較・切り戻し用に無変更のまま保持）。`danger_level`（現物/スジ/無スジ判定）は
+   `phase2/scripts/extract_features.js` の `_danger_level()` から1対1で移植。
+
+2. **一致検証**
+   Node.js（新規インストール、v24.18.0）で `extract_features.js` のロジックと
+   新実装を、実データ（`states_v22.ndjson`）4局面×計10通りのtarget_lで突き合わせ。
+   固定特徴量401次元（比較不能な既知近似272次元・tenpai_prob 1次元を除く）は
+   float32丸め誤差の範囲で完全一致、トークン列（danger_level全4パターン: 無リーチ/
+   現物/スジ/無スジ）も完全一致を確認。
+
+3. **【重要な既知の不具合】JS側 v38 関数に座席番号バグが未修正で残存**
+
+   `ai_phase2.js` の `wind_features()`（124行目付近）と `jikaze_onehot()`
+   （127行目付近）が、v45でPython側（`extract_features.js`）が修正したはずの
+   座席番号バグの**旧式のまま**になっている:
+
+   ```js
+   // ai_phase2.js（v38用、未修正のまま）
+   const jikaze = (player_l - state.jushu + 4) % 4;   // 旧式・誤り
+   ```
+   ```js
+   // extract_features.js（v45で修正済み）
+   const jikaze = player_l;   // 座席番号がそのまま自風インデックス
+   ```
+
+   v46対応では `wind_features_v46()` / `jikaze_onehot_v46()` として修正版を
+   新規実装し、v46経路はこの修正版を使用する。**v38関数（`wind_features`/
+   `jikaze_onehot`）自体は今回修正していない** — v38経路は現状ONNXモデルが
+   存在せず動作していない（`hand_inference/v38/model.onnx` は未エクスポート）
+   ため、実害は今のところ無いが、将来 v38 のONNXを用意して動かす場合は
+   このバグの移植修正が必要。
+
+4. **モデル配置・配線・UI追加**
+   - `model_aggression_candidate.onnx` を `tmp_clone/dist/models/hand_inference/v46/model.onnx`
+     に配置（`dist/` はgitignore対象のため、ビルドのたびに手動配置が必要）。
+   - `ai_phase2.js` の `load_sessions()` のモデルパスを v38→v46 に更新。
+   - `run_phase2()` を v46特徴量関数の呼び出しに変更し、ONNX出力から
+     `aggression_logit` を取り出して `result.hand_inference.aggression` に格納。
+     **`aggression_logit` は (1,) 形状で視点プレイヤー1名分のスカラーであり、
+     3人の対象プレイヤーそれぞれの値ではない**（モデルの `aggression_encoder` が
+     `x[:,0,...]` のみを参照するため）。`players[i].aggression` ではなく
+     `hand_inference.aggression`（単一値）として実装。
+   - `paipu.js` の `_render_phase2()` に「局面情報」（順位・場況・残り牌数・
+     終盤フラグ）と「自分の攻撃性 (v46)」の表示セクションを追加、
+     `ai-modal.pug` にUIスロットを追加。
+   - `behavior_clone`/`value_function`/`yaku_inference`/`tenpai_inference` は
+     ONNX未エクスポートのままで、既存のtry/catchによる握り潰し設計を維持
+     （hand_inferenceのみ動けば今回の照合検証には十分なため）。
+
+5. **ビルド・ブラウザ動作確認**
+   Node.js未インストール環境だったため winget で新規インストール。
+   4パッケージ（majiang-core / majiang-ui-local / tenhou-log-local / tmp_clone）で
+   `npm install` 実行（`tmp_clone` の `patch-package` postinstall は
+   `@kobalab/majiang-ui` 用の旧パッチが `majiang-ui-local`（既に同内容を
+   直接含む独自フォーク）に対して二重適用となり失敗するが、対象ファイルは
+   無傷でビルドに支障なし。既知の問題として記録）。
+   `npm run build` でHTML/CSS/JS生成に成功。
+   Playwright（新規インストール）でヘッドレスブラウザから実際に牌譜
+   （`majiang-core/test/data/script.json` の実データ、東1局・親リーチあり）を開き、
+   AI解析モーダルで aggression が表示されることを確認:
+
+   | 視点 | 局面 | aggression | 表示ラベル |
+   |------|------|-----------|-----------|
+   | 下家(l=1)、親のリーチ後 | 残り40枚 | -0.125 | 中立 |
+   | 対面(l=2)、親のリーチ後 | 残り39枚 | 0.144 | 中立 |
+   | 親本人(l=0、リーチ者本人) | 残り41枚 | 0.047 | 中立 |
+
+   いずれも -1〜+1 の範囲内、局面ごとに異なる値を示すことを確認
+   （常に同一値に固定されていない）。コンソールログで
+   `AI Phase2: loaded hand_inference` と `AI Phase2: aggression = ...` を確認。

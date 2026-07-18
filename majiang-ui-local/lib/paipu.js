@@ -920,6 +920,25 @@ module.exports = class Paipu {
         for (let i = 1; i <= 7; i++) PAI_NAMES_P2.push('z' + i);
         const pai = this._pai;
 
+        // 局面情報 (順位・残り牌数・終盤フラグ) — v46 aggressionの局面依存照合用
+        const ctx_body = modal.find('.ai-ctx-body').empty();
+        if (phase2 && phase2._context) {
+            const { menfeng, remaining, state_snapshot } = phase2._context;
+            const { scores, player_ids, jushu, zhuangfeng, changbang } = state_snapshot;
+            const my_score   = scores[player_ids[menfeng]];
+            const sorted     = [...scores].sort((a, b) => b - a);
+            const rank       = sorted.indexOf(my_score) + 1;
+            const is_endgame = remaining <= 6;
+            const kaze       = ['東', '南', '西', '北'][zhuangfeng] ?? '?';
+            ctx_body.html(
+                `<span class="ai-vf-row">順位: <b class="${rank === 1 ? 'ai-pos' : (rank === 4 ? 'ai-neg' : '')}">${rank}位</b> (${my_score}点)</span>` +
+                `<span class="ai-vf-row">${kaze}${jushu + 1}局 ${changbang}本場</span>` +
+                `<span class="ai-vf-row">残り${remaining}枚${is_endgame ? ' <b class="ai-neg">(終盤)</b>' : ''}</span>`
+            );
+        } else {
+            ctx_body.html('<span class="ai-p2-na">-</span>');
+        }
+
         // 打牌予測 (行動クローン)
         const bc_body = modal.find('.ai-bc-body').empty();
         if (phase2 && phase2.behavior_clone) {
@@ -952,6 +971,23 @@ module.exports = class Paipu {
             );
         } else {
             vf_body.html('<span class="ai-p2-na">-</span>');
+        }
+
+        // 自分の攻撃性 (v46 aggression_logit: -1(防御)〜+1(攻撃)のスカラー)
+        // 3人分バッチではなく視点プレイヤー1名分の値であることに注意 (ai_phase2.js参照)
+        const agg_body = modal.find('.ai-agg-body').empty();
+        if (phase2 && phase2.hand_inference && phase2.hand_inference.aggression != null) {
+            const agg   = phase2.hand_inference.aggression;
+            const pct   = Math.round((Math.min(1, Math.max(-1, agg)) + 1) / 2 * 100);
+            const cls   = agg > 0.15 ? 'ai-pos' : (agg < -0.15 ? 'ai-neg' : '');
+            const label = agg > 0.15 ? '攻撃' : (agg < -0.15 ? '防御' : '中立');
+            agg_body.html(
+                `<span class="ai-vf-row"><b class="${cls}">${agg.toFixed(3)}</b> (${label})</span>` +
+                `<div class="ai-prob-wrap"><div class="ai-prob-fill" style="width:${pct}%"></div></div>` +
+                `<span class="ai-vf-row">-1(防御) 〜 +1(攻撃)</span>`
+            );
+        } else {
+            agg_body.html('<span class="ai-p2-na">-</span>');
         }
 
         // 他家手牌推定

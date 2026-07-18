@@ -577,6 +577,220 @@
         return { flat, mask };
     }
 
+    // ==================== v46 (固定674次元 + トークン45次元) ====================
+    // phase2/scripts/extract_features.js の make_hand_inference_sample() /
+    // build_event_tokens() と1対1で対応させること（照合検証済み。下記コメント参照）。
+    //
+    // v38(695次元)からの差分:
+    //   - yaku_probs(21次元)ブロックを廃止（v46モデルは yaku を入力に取らない。
+    //     yaku_head として手牌推定モデル自体に統合されたため [673:694] が消滅）
+    //   - tenpai_prob が [694] → [673] に前進（695→674次元）
+    //   - [0:673] は make_hi_features_v38 の [0:673] と全く同じオフセット構成だが、
+    //     wind_features / jikaze_onehot に v45 で修正されたバグが v38版には残ったまま
+    //     だったため、v46版では修正済みのロジックを新規関数として用意する
+    //     （wind_features_v46 / jikaze_onehot_v46。旧 wind_features / jikaze_onehot は
+    //     v38専用として変更せず残す）。
+    //
+    // [Bug] v45で修正されたはずの座席番号バグが、ブラウザ側 v38 実装には
+    //   移植されていなかった（wind_features/jikaze_onehot が旧式の
+    //   (player_l - state.jushu + 4) % 4 のままだった）。extract_features.js は
+    //   v45で `jikaze = player_l` に修正済み（DESIGN_STATE.md [Bug-1]参照）。
+    //   v46移行にあわせて修正版を新設する。
+
+    function wind_features_v46(state, player_l) {
+        // v45修正版: 自風indexは座席番号(player_l)そのもの (0=東=当局の親)。
+        const jikaze = player_l;
+        const oh = [0, 0, 0, 0];
+        oh[jikaze] = 1;
+        return [...oh, state.zhuangfeng];
+    }
+
+    function jikaze_onehot_v46(state, player_l) {
+        const oh = [0, 0, 0, 0];
+        oh[player_l] = 1;
+        return oh;
+    }
+
+    // ---- v45 danger_level ヘルパー（extract_features.js と同一ロジック。可視情報のみ・リークなし） ----
+
+    function _riichi_suji_v46(discards_j, j, t_key) {
+        // t_key より前のリーチ宣言牌('*')からスジインデックスセットを返す。
+        for (let k = 0; k < discards_j.length; k++) {
+            const t_j = 4 * k + j;
+            if (t_j >= t_key) break;
+            const tile = discards_j[k];
+            if (!tile.includes('*')) continue;
+            const base = tile.replace(/[_*+=\-]/g, '');
+            const idx = PAI_INDEX[base];
+            if (idx === undefined || idx >= 27) return new Set();   // 字牌はスジなし
+            const suit = Math.floor(idx / 9);
+            const n    = idx % 9;
+            const suji = new Set();
+            if (n >= 3) suji.add(suit * 9 + (n - 3));
+            if (n <= 5) suji.add(suit * 9 + (n + 3));
+            return suji;
+        }
+        return new Set();
+    }
+
+    function _was_riichi_before_v46(j, t_key, discards_j) {
+        for (let k = 0; k < discards_j.length; k++) {
+            if (4 * k + j >= t_key) break;
+            if (discards_j[k].includes('*')) return true;
+        }
+        return false;
+    }
+
+    function _danger_level_v46(act_idx, l, t_key, discards_l) {
+        // 0=リーチなし, 1=現物, 2=スジ, 3=無スジ
+        if (act_idx < 0) return 0;
+        const riichi_js = [];
+        for (let j = 0; j < 4; j++) {
+            if (j !== l && _was_riichi_before_v46(j, t_key, discards_l[j] || [])) riichi_js.push(j);
+        }
+        if (riichi_js.length === 0) return 0;
+
+        // 現物チェック（t_key 前のリーチ者の捨て牌に act_idx があるか）
+        for (const j of riichi_js) {
+            const dj = discards_l[j] || [];
+            for (let k = 0; k < dj.length; k++) {
+                if (4 * k + j >= t_key) break;
+                if ((PAI_INDEX[dj[k].replace(/[_*+=\-]/g, '')] ?? -1) === act_idx) return 1;
+            }
+        }
+
+        // スジチェック
+        let all_suji = true;
+        for (const j of riichi_js) {
+            if (!_riichi_suji_v46(discards_l[j] || [], j, t_key).has(act_idx)) {
+                all_suji = false;
+                break;
+            }
+        }
+        return all_suji ? 2 : 3;
+    }
+
+    // ---- v46 統一イベントトークン列 (45次元/トークン) ----
+    // extract_features.js の build_event_tokens() と1対1対応。
+    // ブラウザは pon_passes_l / chi_passes_l を再構築できないため、
+    // PASS_PON/PASS_CHI トークンは生成しない（DISCARDイベントのみ。v38からの制約を継承）。
+
+    const EVENT_TOKEN_DIM_V46  = 45;
+    const MAX_GLOBAL_TURNS_V46 = 70;
+
+    function build_event_tokens_v46(state, target_l, other_ls) {
+        const events = [];  // { t_key: number, token: number[] }
+
+        const role_map = {
+            [target_l]:    [1, 0, 0, 0],
+            [state.l]:     [0, 1, 0, 0],
+            [other_ls[0]]: [0, 0, 1, 0],
+            [other_ls[1]]: [0, 0, 0, 1],
+        };
+
+        // --- DISCARD events (全4プレイヤー) ---
+        for (const l of [target_l, state.l, other_ls[0], other_ls[1]]) {
+            const role     = role_map[l];
+            const seat_off = l;   // v45修正: 座席番号=seat_off (dealer=0固定)
+            const discards = state.discards_l[l] || [];
+            for (let i = 0; i < discards.length; i++) {
+                const p = discards[i];
+                const base = p.replace(/[_*+=\-]/g, '');
+                const n_digit        = parseInt(base[1]);
+                const is_red         = (n_digit === 0) ? 1 : 0;
+                const is_tsumogiri   = p.includes('_') ? 1 : 0;
+                const is_riichi_decl = p.includes('*') ? 1 : 0;
+                const pi = pai_to_idx(base);
+                const tile_oh = new Array(N_PAI).fill(0);
+                if (pi >= 0) tile_oh[pi] = 1;
+                const t_key = 4 * i + seat_off;
+                const dl = _danger_level_v46(pi, l, t_key, state.discards_l) / 3;
+                events.push({
+                    t_key,
+                    token: [...tile_oh, t_key / MAX_GLOBAL_TURNS_V46, is_tsumogiri, is_riichi_decl, is_red, ...role, 0, 0, dl],
+                });
+            }
+        }
+
+        // PASS_PON/PASS_CHI: ブラウザでは再構築不可のため生成しない（state に
+        // pon_passes_l / chi_passes_l が存在しない。固定特徴量側の pon_pass も
+        // 同様の理由で近似値であることは pass_pon_signal_from_state 側のコメント参照）
+
+        // グローバル巡数でソートして時系列順に結合
+        events.sort((a, b) => a.t_key - b.t_key);
+        return events.map(e => e.token);
+    }
+
+    function make_discard_tokens_v46(state, target_l) {
+        const TOKEN_DIM = EVENT_TOKEN_DIM_V46;
+        const TOKEN_MAX = 144;
+
+        const other_ls = [1, 2, 3]
+            .map(rel => (state.l + rel) % 4)
+            .filter(l => l !== target_l);
+
+        const tokens = build_event_tokens_v46(state, target_l, other_ls);
+
+        // 末尾から TOKEN_MAX トークンを取得（先頭は padding=True）
+        const N     = Math.min(tokens.length, TOKEN_MAX);
+        const start = tokens.length - N;
+        const flat  = new Float32Array(TOKEN_MAX * TOKEN_DIM);
+        const mask  = new Uint8Array(TOKEN_MAX).fill(1);  // 1=padding(True)
+
+        for (let i = 0; i < N; i++) {
+            for (let d = 0; d < TOKEN_DIM; d++) flat[i * TOKEN_DIM + d] = tokens[start + i][d];
+            mask[i] = 0;  // 0=有効トークン(False)
+        }
+        return { flat, mask };
+    }
+
+    // ---- v46 固定特徴量 (674次元) ----
+    // extract_features.js の make_hand_inference_sample() と1対1対応。
+    // [137:171] pon_pass(target) / [354:456] self,o1,o2_pon_pass は
+    // pass_pon_signal_from_state による近似値（ターゲットの手牌不明のため全スルーを
+    // カウントする粗い近似。訓練側の真値とは一致しない。v38から変更なし・既知の制約）。
+    // [176:210][456:558] chi_pass系はブラウザ不可のためゼロ埋め（v38から変更なし）。
+    // [673] tenpai_prob はモデル推定値（tenpai_inference の出力）であり、
+    // 訓練データの真値（実際のシャンテン数由来）とは異なる近似値（v38から変更なし）。
+
+    function make_hi_features_v46(state, target_l, tenpai_prob) {
+        const other_ls = [1, 2, 3]
+            .map(rel => (state.l + rel) % 4)
+            .filter(l => l !== target_l);
+
+        return new Float32Array([
+            ...meld_features(state.melds_l[target_l]),                                    // [0:38]   target_meld
+            state.riichi_l[target_l] ? 1 : 0,                                            // [38]     target_riichi
+            ...score_features(state),                                                     // [39:50]  score
+            ...game_state_features(state),                                                // [50:59]  game_state
+            ...meld_features(state.melds_l[state.l]),                                    // [59:97]  self_meld
+            ...visible_counts_vec(state),                                                 // [97:131] visible_counts
+            ...red_discard_signal(state.discards_l[target_l], state.riichi_l[target_l]), // [131:134] red_disc_sig
+            ...red_visible_flags(state),                                                  // [134:137] red_visible
+            ...pass_pon_signal_from_state(state, target_l),                              // [137:171] pon_pass(target) ※近似
+            ...wind_features_v46(state, target_l),                                       // [171:176] wind(target) ※v45修正版
+            ...new Array(34).fill(0),                                                    // [176:210] chi_pass(target) ゼロ
+            ...chi_called_tile_signal_from_melds(state.melds_l[target_l]),               // [210:244] chi_called(target)
+            ...dora_features(state.baopai),                                              // [244:278] dora
+            ...meld_features(state.melds_l[other_ls[0]]),                                // [278:316] other1_meld
+            ...meld_features(state.melds_l[other_ls[1]]),                                // [316:354] other2_meld
+            ...pass_pon_signal_from_state(state, state.l),                               // [354:388] self_pon_pass ※近似
+            ...pass_pon_signal_from_state(state, other_ls[0]),                           // [388:422] o1_pon_pass ※近似
+            ...pass_pon_signal_from_state(state, other_ls[1]),                           // [422:456] o2_pon_pass ※近似
+            ...new Array(34).fill(0),                                                    // [456:490] self_chi_pass ゼロ
+            ...new Array(34).fill(0),                                                    // [490:524] o1_chi_pass ゼロ
+            ...new Array(34).fill(0),                                                    // [524:558] o2_chi_pass ゼロ
+            Math.min(state.lizhibang || 0, 8) / 8,                                       // [558]     lizhibang
+            ...jikaze_onehot_v46(state, state.l),                                        // [559:563] self_jikaze ※v45修正版
+            ...jikaze_onehot_v46(state, other_ls[0]),                                    // [563:567] o1_jikaze ※v45修正版
+            ...jikaze_onehot_v46(state, other_ls[1]),                                    // [567:571] o2_jikaze ※v45修正版
+            ...chi_called_tile_signal_from_melds(state.melds_l[state.l]),                // [571:605] self_chi_called
+            ...chi_called_tile_signal_from_melds(state.melds_l[other_ls[0]]),            // [605:639] o1_chi_called
+            ...chi_called_tile_signal_from_melds(state.melds_l[other_ls[1]]),            // [639:673] o2_chi_called
+            tenpai_prob != null ? tenpai_prob : 0,                                       // [673]     tenpai_prob (v46: yaku_probs廃止で前進)
+        ]);
+    }
+
     // ---- ハーネス: 論理整合性チェック ----
 
     function compute_paishu_per_tile(state) {
@@ -1314,16 +1528,18 @@
                     }
                 }
 
-                // Stage 2: 手牌推定 — v38: (1,3,695) 固定特徴 + トークン列
-                const FIXED_DIM = 695, TOK_DIM = 44, TOK_MAX = 144;
-                const round_log_v38 = paipu.log[log_idx];
+                // Stage 2: 手牌推定 — v46: (1,3,674) 固定特徴 + トークン列(45次元/トークン)
+                // v38からの変更点: yaku_probsは入力に含めない(v46はyaku_headをモデルに統合済み)。
+                // トークンはstateから直接構築する(build_event_tokens_v46がstate.discards_lを参照)。
+                const FIXED_DIM = 674, TOK_DIM = 45, TOK_MAX = 144;
+                const round_log_v46 = paipu.log[log_idx];
                 const flat_feats  = new Float32Array(3 * FIXED_DIM);
                 const flat_toks   = new Float32Array(3 * TOK_MAX * TOK_DIM);
                 const flat_masks  = new Uint8Array(3 * TOK_MAX).fill(1);
                 for (let i = 0; i < 3; i++) {
-                    const feats = make_hi_features_v38(state, target_ls[i], yaku_probs_list[i], tenpai_prob_list[i]);
+                    const feats = make_hi_features_v46(state, target_ls[i], tenpai_prob_list[i]);
                     flat_feats.set(feats, i * FIXED_DIM);
-                    const { flat: tok_flat, mask } = make_discard_tokens_v38(round_log_v38, current_idx, menfeng, target_ls[i]);
+                    const { flat: tok_flat, mask } = make_discard_tokens_v46(state, target_ls[i]);
                     flat_toks.set(tok_flat, i * TOK_MAX * TOK_DIM);
                     flat_masks.set(mask, i * TOK_MAX);
                 }
@@ -1342,6 +1558,19 @@
                 const red_data    = out['red_logits'] ? out['red_logits'].data : null;
                 const block_data  = out['block_logits'] ? out['block_logits'].data : null;
                 const wait_data   = out['wait_logits'] ? out['wait_logits'].data : null; // v32: 113-dim tatsu
+
+                // aggression_logit: (1,) — 3人分バッチではなく視点プレイヤー(menfeng)1名分のスカラー。
+                // モデル内 aggression_encoder は x[:,0,...] (P軸のスロット0 = target_ls[0]を
+                // target とした場合のself_meld/score/game/visible + other1/other2_meld) のみを
+                // 参照するため、target_ls の3人それぞれに対応する値ではない。
+                // → result.hand_inference.players[i].aggression ではなく
+                //   result.hand_inference.aggression （単一値）として返す。
+                let aggression = null;
+                if (out['aggression_logit']) {
+                    aggression = out['aggression_logit'].data[0];
+                    console.log('AI Phase2: aggression =', aggression,
+                                 (aggression >= -1 && aggression <= 1) ? '(範囲内 -1〜+1)' : '(!! 範囲外)');
+                }
 
                 const paishu  = compute_paishu_per_tile(state); // 全player共通
                 const players = [];
@@ -1379,7 +1608,7 @@
 
                     const checkers = run_checkers(
                         probs_per_tile, tatsu_probs, state, target_l,
-                        round_log_v38, current_idx, paishu
+                        round_log_v46, current_idx, paishu
                     );
                     if (window.FeedbackLogger) {
                         window.FeedbackLogger.pushLog({
@@ -1392,7 +1621,7 @@
                         probs_per_tile, aka, block_ev, tatsu_probs, checkers,
                     });
                 }
-                result.hand_inference = { players };
+                result.hand_inference = { players, aggression };
             } catch(e) { console.warn('AI Phase2: hand_inference error', e); }
         }
 
@@ -1409,6 +1638,7 @@
                 melds_l:     state.melds_l.map(m => [...m]),
                 riichi_l:    [...state.riichi_l],
                 scores:      [...state.scores],
+                player_ids:  [...state.player_ids],
                 baopai:      [...state.baopai],
                 lizhibang:   state.lizhibang,
                 zhuangfeng:  state.zhuangfeng,
@@ -1427,7 +1657,7 @@
     async function load_sessions() {
         const s = {};
         const models = [
-            ['hand_inference', MODEL_BASE + 'hand_inference/v38/model.onnx'],
+            ['hand_inference', MODEL_BASE + 'hand_inference/v46/model.onnx'],
             ['behavior_clone', MODEL_BASE + 'behavior_clone/v2/model.onnx'],
             ['value_function', MODEL_BASE + 'value_function/v2/model.onnx'],
             ['yaku_inference',   MODEL_BASE + 'yaku_inference/v1/model.onnx'],
@@ -1482,7 +1712,9 @@
         module.exports = { visible_counts_vec, red_visible_flags, red_discard_signal, pai_to_idx, encode_hand,
                            compute_block_ev, get_best_hand_str, make_block_display_data,
                            block_to_per_tile_dist, blend_per_tile, make_block_display_data_v11,
-                           chi_called_tile_signal_from_melds, make_hi_features_v29, make_block_display_data_v29 };
+                           chi_called_tile_signal_from_melds, make_hi_features_v29, make_block_display_data_v29,
+                           make_hi_features_v46, make_discard_tokens_v46, build_event_tokens_v46,
+                           _danger_level_v46, wind_features_v46, jikaze_onehot_v46 };
     }
 
 })();
