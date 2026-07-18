@@ -330,3 +330,130 @@ ATTACK_MAX          # 攻撃全体の上限（クリップ）
 誤解されやすいが「両面が枯れているため安全に切れる = 攻撃的でない」である。
 `danger_to_strength` で `DL3_NC_STRENGTH < DL3_NOT_NC_STRENGTH` となるよう実装済み。
 「NC = 安全なので攻撃意図が薄い」という設計を記録しておく。
+
+---
+
+## v46 完走の結果（2026-07-18 確定）
+
+### 学習概要
+
+- 使用データ: `hand_inference_v46.ndjson`（164,414サンプル）
+  - v45との差異: `aggression` スカラー回帰ヘッド追加（push/retreat → [-1,+1]）
+- モデル: HandInferenceV37 + aggression_head（Linear(d_model, 1) + Tanh）
+- **ep200 到達**（early stopping 不発、best は途中で確定）
+- ベストモデル: **ep185**（val_eae 基準、best_eae=4.0983）
+
+### バリデーション指標（best ep185）
+
+| 指標 | v46 | v45 | Δ |
+|------|-----|-----|---|
+| val_eae（best） | **4.0983** | 4.2802 | **-0.1819**（改善） |
+| wait_f1 | 0.820（途中）| 0.2999 | — |
+
+### テスト評価（model.pt = ep185）
+
+| 指標 | v46 | v45 | v44 |
+|------|-----|-----|-----|
+| test_eae | **4.1170** | 4.2972 | 3.9184 |
+| test_eae_stage | 3.1501 | — | — |
+| test_acc | 0.9159 | 0.9111 | 0.9188 |
+| wait_f1 | 0.3149 | 0.2999 | 0.3312 |
+| wait_top1_acc | 0.6616 | 0.6626 | 0.6976 |
+| agg_all_mae | **0.1501** | — | — |
+| agg_pressure_mae | **0.1800** | — | — |
+| agg_sign_acc | **0.8353** | — | — |
+
+### v46 新規タスク（aggression）評価
+
+| 指標 | 値 | 意味 |
+|------|-----|-----|
+| agg_all_mae | 0.1501 | 全局面の平均絶対誤差（[-1,+1]スケール） |
+| agg_pressure_mae | 0.1800 | 圧力局面（攻防どちらかが明確）限定MAE |
+| agg_sign_acc | 0.8353 | 符号一致率（攻撃 vs 防御の方向正解率）|
+
+- 符号一致率 83.5% は実用レベル（ランダム=50%）
+- MAE 0.15（[-1,+1]スケール）→ 15%ポイント誤差
+
+### v46 構成（確定）
+
+| 項目 | 設定 |
+|------|------|
+| ベースライン | v45 完全継承（データ・λ・アーキ） |
+| 追加ヘッド | `aggression_head = Linear(256, 1) + Tanh` |
+| LAMBDA_AGG | 0.3 |
+| データ | hand_inference_v46.ndjson（aggression ラベル付き） |
+| ラベル生成 | `phase2/scripts/add_aggression_labels.py` |
+| early stopping | val_eae 基準、patience=15 |
+
+---
+
+## 新PC移行手順（2026-07-18 作成）
+
+### 背景
+
+旧PC（THPC-L01, RTX 3080）から新PC（RTX 5080）へ学習環境を移行する。
+git 管理外の大容量ファイル（学習データ・モデル）はzipで移送する。
+
+### 移行ファイルセット
+
+| ファイル | 内容 | サイズ（非圧縮）|
+|---------|------|--------------|
+| `data_all_20260718.zip` | 全 ndjson データファイル | ~23 GB |
+| `models_v44v45v46_20260718.zip` | v44/v45/v46 model.pt + checkpoint.pt + v46 ONNX | ~166 MB |
+
+Google Drive 経由でアップロード・ダウンロード（認証はユーザーが実施）。
+ハッシュ照合基準は `phase2/migration/checksums_20260718.txt` を参照。
+
+### 新PCでの再現手順
+
+```
+# 1. リポジトリ取得
+git clone https://github.com/itsutsukarabo/mahjong-AI.git
+cd mahjong-AI
+git checkout feature/v46-aggression
+
+# 2. Google Drive から zip ダウンロード
+#    data_all_20260718.zip
+#    models_v44v45v46_20260718.zip
+
+# 3. zip 全体の SHA256 照合（破損チェック）
+#    Windows PowerShell:
+(Get-FileHash data_all_20260718.zip -Algorithm SHA256).Hash
+(Get-FileHash models_v44v45v46_20260718.zip -Algorithm SHA256).Hash
+#    → phase2/migration/checksums_20260718.txt の [ZIP_SHA256] セクションと照合
+
+# 4. リポジトリルートで展開
+#    Windows PowerShell:
+Expand-Archive data_all_20260718.zip -DestinationPath . -Force
+Expand-Archive models_v44v45v46_20260718.zip -DestinationPath . -Force
+#    7-Zip CLI の場合:
+#    7z x data_all_20260718.zip -o. -y
+#    7z x models_v44v45v46_20260718.zip -o. -y
+
+# 5. 個別ファイルの SHA256 照合（全ファイル完全性確認）
+#    phase2/migration/checksums_20260718.txt の [FILE_SHA256] セクションを参照
+#    スクリプト:
+python phase2/migration/verify_checksums.py
+
+# 6. CUDA/PyTorch 環境構築（RTX 5080 向け）
+python -m venv C:\ml\venv
+C:\ml\venv\Scripts\activate
+pip install torch --index-url https://download.pytorch.org/whl/cu128
+pip install -r phase2/requirements_v46.txt
+
+# 7. v46 再評価（移行成功の最終判定）
+#    test_eae ≈ 4.117 が出れば移行成功
+python phase2/train/train_hand_inference_v46.py --eval-only \
+  --model phase2/models/hand_inference/v46/model.pt
+```
+
+### 移行成功の判定基準
+
+| 指標 | 旧PCの値 | 許容範囲 |
+|------|---------|---------|
+| test_eae | 4.1170 | ±0.01 |
+| test_acc | 0.9159 | ±0.001 |
+| agg_sign_acc | 0.8353 | ±0.005 |
+
+微小な数値差はハードウェア・cuDNN バージョン差異によるもので正常。
+大きな乖離（>±0.1）はデータ破損・モデル不整合を示す。
