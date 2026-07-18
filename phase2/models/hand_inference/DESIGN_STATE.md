@@ -457,3 +457,57 @@ python phase2/train/train_hand_inference_v46.py --eval-only \
 
 微小な数値差はハードウェア・cuDNN バージョン差異によるもので正常。
 大きな乖離（>±0.1）はデータ破損・モデル不整合を示す。
+
+---
+
+## 環境移行（2026-07-18）
+
+- 移行元: THPC-L01（旧ワークステーション、RTX 3080）
+- 移行先: 新PC（RTX 5080 Blackwell, Windows, `C:\Users\tetsu\mahjong-AI`, ディスク1.9TB）
+- 移行方法:
+  * コード・設計・テスト: gitリモート（github.com/itsutsukarabo/mahjong-AI）経由。
+    main と feature/v46-aggression 両ブランチをpush→新PCでclone。
+  * データ・モデル: ディレクトリ構成を保ったzip化 → Google Drive → 新PCで展開。
+    `data_all_20260718.zip`（~23GB展開）/ `models_v44v45v46_20260718.zip`（~166MB展開）
+  * 完全性検証: SHA256ハッシュ一覧（`phase2/migration/checksums_20260718.txt`）をgitにコミットし、
+    新PCでzip単位・個別ファイル単位（全24件）を照合（全一致）。
+- 環境: RTX5080(Blackwell, sm_120)対応のPyTorch/CUDAを新規構築
+  （旧PCのpip freezeは参照に留め、5080が動く組み合わせを確認して導入）。
+  * Python: 3.12.10
+  * PyTorch: **torch==2.11.0+cu128**（`pip install torch --index-url https://download.pytorch.org/whl/cu128`）
+  * CUDA: ビルドに同梱のCUDA 12.8（`torch.version.cuda == "12.8"`）。
+    ドライバは610.62でCUDA 13.3まで対応、cu128ビルドは後方互換で動作。
+  * `torch.cuda.get_device_capability()` → `(12, 0)`（sm_120）で認識、動作確認済み。
+  * その他依存は `phase2/requirements_v46.txt`（torch行以外）をそのまま導入、`pip check`で競合なし。
+- 移行検証: 移したv46モデル（`model.pt`）+ 移したv46データ（`hand_inference_v46.ndjson`,
+  164,414行）で同一test split（rng seed=42, 80/10/10分割）を再現し評価。
+
+  | 指標 | 旧PC(RTX3080) | 新PC(RTX5080) | 差分 |
+  |------|--------------|--------------|------|
+  | test_eae | 4.116973118 | 4.116973331 | 2.1e-7 |
+  | test_eae_stage | 3.150114642 | 3.150114833 | 1.9e-7 |
+  | test_acc | 0.9159046297 | 0.9159046297 | 0 |
+  | soft_f1 | 0.3237 | 0.3237 | 0 |
+  | wait_f1 | 0.3149 | 0.3149 | 0 |
+  | wait_hit_rate | 0.354 | 0.354 | 0 |
+  | wait_top1_acc | 0.6616 | 0.6616 | 0 |
+  | agg_all_mae | 0.1501 | 0.1501 | 0 |
+  | agg_pressure_mae | 0.18 | 0.18 | 0 |
+  | agg_sign_acc | 0.8353 | 0.8353 | 0 |
+
+  判定基準（test_eae ±0.01, test_acc ±0.001, agg_sign_acc ±0.005）を全てクリア。
+  他指標もほぼ完全一致。**移行成功。**
+
+  注: `train_hand_inference_v46.py` に `--eval-only` フラグは実装されていない
+  （sys.argv手動パースで `--resume`/`--stop-after` のみ対応、未知フラグは無視されて
+  フルスクラッチ学習が誤起動しうる）。新PCでの再評価は、学習ループを呼ばず
+  `eval_epoch`/`eval_wait_metrics`/`eval_aggression` のみを使う評価専用スクリプトを
+  別途用意して実施した。
+
+- 教訓: gitリモートへのpush状態を移行前に必ず確認する。
+  今回、push直後にcloneして確認したところ main は origin と同期済み、
+  feature/v46-aggression は main から **4コミット**先行した状態で push 済みだった
+  （`v46: ep200完走・攻撃性ヘッド統合`、`push/retreat→aggression回帰ヘッド実装`、
+  `v39〜v44実験記録追加`、`migration: 移行用zip・チェックサム・手順書追加`）。
+  pushを確認せずcloneしていた場合、これらのコミット（v46の学習成果本体を含む）を
+  取りこぼす可能性があった。
