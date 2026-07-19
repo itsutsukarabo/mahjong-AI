@@ -396,13 +396,18 @@ git 管理外の大容量ファイル（学習データ・モデル）はzipで�
 
 ### 移行ファイルセット
 
-| ファイル | 内容 | サイズ（非圧縮）|
-|---------|------|--------------|
-| `data_all_20260718.zip` | 全 ndjson データファイル | ~23 GB |
-| `models_v44v45v46_20260718.zip` | v44/v45/v46 model.pt + checkpoint.pt + v46 ONNX | ~166 MB |
+| ファイル | 内容 | 圧縮後サイズ | 必須度 |
+|---------|------|------------|-------|
+| `data_all_20260718.zip` | 全 ndjson データファイル 16本（~23 GB 非圧縮） | 1.06 GB | **必須** |
+| `models_v44v45v46_20260718.zip` | v44/v45/v46 model.pt + checkpoint.pt + v46 ONNX | 151 MB | **必須** |
+| `models_full_20260718.zip` | phase2/models/ 配下 全114重みファイル | 1.13 GB | 任意（他バージョンが必要な場合） |
+| `paipu_raw_20260718.zip` | 生牌譜 XML 500ファイル | 3.1 MB | 任意（states 再生成が必要な場合） |
 
-Google Drive 経由でアップロード・ダウンロード（認証はユーザーが実施）。
-ハッシュ照合基準は `phase2/migration/checksums_20260718.txt` を参照。
+- Google Drive 経由でアップロード・ダウンロード（認証はユーザーが実施）。
+- 全 zip のSHA256は `phase2/migration/checksums_20260718.txt` の `[ZIP_SHA256]` セクションを参照。
+- 個別ファイルの SHA256（v44/v45/v46 モデル + 全16 ndjson）は同ファイルの `[FILE_SHA256]` セクション、
+  models_full の全114ファイルは `phase2/migration/models_full_hashes_20260718.txt` を参照。
+- **15 GB 制限**: 単一ファイルは全て 1.13 GB 以下。Google Drive の個別ファイルサイズ制限（通常 5TB）に抵触なし。
 
 ### 新PCでの再現手順
 
@@ -412,9 +417,11 @@ git clone https://github.com/itsutsukarabo/mahjong-AI.git
 cd mahjong-AI
 git checkout feature/v46-aggression
 
-# 2. Google Drive から zip ダウンロード
-#    data_all_20260718.zip
-#    models_v44v45v46_20260718.zip
+# 2. Google Drive から zip ダウンロード（最低限: 必須2本）
+#    data_all_20260718.zip         → 学習・評価データ
+#    models_v44v45v46_20260718.zip → v44/v45/v46 モデル本体
+#    （任意）models_full_20260718.zip  → 全バージョン重みファイル
+#    （任意）paipu_raw_20260718.zip    → 生牌譜XML（states再生成用）
 
 # 3. zip 全体の SHA256 照合（破損チェック）
 #    Windows PowerShell:
@@ -422,29 +429,47 @@ git checkout feature/v46-aggression
 (Get-FileHash models_v44v45v46_20260718.zip -Algorithm SHA256).Hash
 #    → phase2/migration/checksums_20260718.txt の [ZIP_SHA256] セクションと照合
 
-# 4. リポジトリルートで展開
-#    Windows PowerShell:
-Expand-Archive data_all_20260718.zip -DestinationPath . -Force
-Expand-Archive models_v44v45v46_20260718.zip -DestinationPath . -Force
-#    7-Zip CLI の場合:
-#    7z x data_all_20260718.zip -o. -y
-#    7z x models_v44v45v46_20260718.zip -o. -y
+# 4. リポジトリルートで展開（7-Zip CLI 推奨。Expand-Archive は 2GB 制限あり）
+7z x data_all_20260718.zip -o. -y
+7z x models_v44v45v46_20260718.zip -o. -y
+
+# 4b. 任意: models_full 展開（展開先: phase2/models/）
+#     models_v44v45v46 と重複するファイルは上書きされる（同一バイナリのため問題なし）
+7z x models_full_20260718.zip -o. -y
+
+# 4c. 任意: 生牌譜 XML 展開（展開先: phase2/data/raw/xml/）
+#     states 再生成が必要な場合（v48以降で特徴量仕様変更時）
+7z x paipu_raw_20260718.zip -o. -y
+#     展開後ファイル数確認:
+(Get-ChildItem phase2\data\raw\xml\*.xml | Measure-Object).Count  # → 500
 
 # 5. 個別ファイルの SHA256 照合（全ファイル完全性確認）
-#    phase2/migration/checksums_20260718.txt の [FILE_SHA256] セクションを参照
-#    スクリプト:
 python phase2/migration/verify_checksums.py
+#    OK: 24件（モデル8 + データ16）が全て OK と表示されれば成功
+#    任意: models_full の照合は models_full_hashes_20260718.txt を手動で参照
 
-# 6. CUDA/PyTorch 環境構築（RTX 5080 向け）
+# 6. 展開後の確認事項
+#    (a) 必須モデルの存在確認
+Test-Path phase2\models\hand_inference\v46\model.pt       # → True
+Test-Path phase2\models\hand_inference\v46\model.onnx    # → True
+Test-Path phase2\models\hand_inference\v45\model.pt      # → True
+Test-Path phase2\models\hand_inference\v44\model.pt      # → True
+#    (b) 学習データの行数確認（states 再利用の場合）
+(Get-Content phase2\data\states\states_v22.ndjson | Measure-Object -Line).Lines  # → 1,153,236
+(Get-Content phase2\data\features\hand_inference_v46.ndjson | Measure-Object -Line).Lines  # → 164,414
+#    (c) 他バージョン重みの存在確認（models_full 展開時）
+Test-Path phase2\models\tenpai_inference\v1\model.pt     # → True（例）
+
+# 7. CUDA/PyTorch 環境構築（RTX 5080 向け）
 python -m venv C:\ml\venv
 C:\ml\venv\Scripts\activate
 pip install torch --index-url https://download.pytorch.org/whl/cu128
 pip install -r phase2/requirements_v46.txt
 
-# 7. v46 再評価（移行成功の最終判定）
-#    test_eae ≈ 4.117 が出れば移行成功
-python phase2/train/train_hand_inference_v46.py --eval-only \
-  --model phase2/models/hand_inference/v46/model.pt
+# 8. v46 評価（移行成功の最終判定）
+#    注: --eval-only フラグは未実装。評価専用スクリプトを用意して実行すること
+#    （詳細は「環境移行」セクションの注記を参照）
+#    test_eae ≈ 4.117, agg_sign_acc ≈ 0.835 が出れば移行成功
 ```
 
 ### 移行成功の判定基準
