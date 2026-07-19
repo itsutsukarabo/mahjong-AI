@@ -1,9 +1,11 @@
 data/raw/*
 !data/raw/.gitkeep
+!data/raw/ids_scc_recent.txt
 data/states/*
 !data/states/.gitkeep
 data/features/*
 !data/features/.gitkeep
+!data/features/*.json
 models/**/*.pt
 models/**/*.onnx
 models/**/*.pkl
